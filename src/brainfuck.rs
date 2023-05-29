@@ -1,7 +1,5 @@
 use anyhow::Result;
-use std::{
-    io::{Read, Stderr, Stdin, Stdout, Write},
-};
+use std::io::{Read, Stderr, Stdin, Stdout, Write};
 
 pub struct Interpreter {
     state: BrainfuckState,
