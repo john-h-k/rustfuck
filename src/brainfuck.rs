@@ -1,6 +1,6 @@
 use std::io::{Read, Stderr, Stdin, Stdout, Write};
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 
 pub struct Interpreter {
     state: BrainfuckState,
@@ -108,6 +108,7 @@ impl Interpreter {
                                 instr_pointer = pos;
                                 break;
                             }
+                            None => bail!("Unmatched '[' at position {}", instr_pointer),
                             _ => {}
                         }
                     }
@@ -130,6 +131,7 @@ impl Interpreter {
                                 instr_pointer = pos;
                                 break;
                             }
+                            None => bail!("Unmatched ']' at position {}", instr_pointer),
                             _ => {}
                         }
                     }
