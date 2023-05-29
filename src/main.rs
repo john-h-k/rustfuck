@@ -9,8 +9,6 @@ use clap::Parser;
 
 mod brainfuck;
 
-use brainfuck::Interpreter;
-
 #[derive(Parser)]
 #[command(name = "rustfuck")]
 #[command(author = "John Harry Kelly <johnharrykelly@gmail.com>")]

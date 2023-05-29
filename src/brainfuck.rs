@@ -1,149 +1,62 @@
-use std::io::{Read, Stderr, Stdin, Stdout, Write};
+use bumpalo::Bump;
 
-use anyhow::{bail, Result};
-
-pub struct Interpreter {
-    state: BrainfuckState,
-    stdin: Stdin,
-    stdout: Stdout,
-    stderr: Stderr,
+pub struct IrGen {
+    program: Vec<u8>,
 }
 
-#[derive(Debug)]
-pub struct BrainfuckState {
-    pub cells: Vec<u8>,
-    pub pos: usize,
-}
-
-#[derive(PartialEq, Eq)]
-enum CellOp {
+pub enum IrOp {
     Inc,
     Dec,
+    MvRight,
+    MvLeft,
+    In,
+    Out,
 }
 
-impl BrainfuckState {
-    pub fn read_cell(&self, i: usize) -> u8 {
-        // If the cell is OOB, it cannot have been written to, so must be zero
-        *self.cells.get(i).unwrap_or(&0u8)
-    }
-
-    pub fn read_cur_cell(&self) -> u8 {
-        self.read_cell(self.pos)
-    }
-
-    fn set_cur_cell(&mut self, val: u8) {
-        if self.pos >= self.cells.len() {
-            self.cells.resize(self.pos + 1, 0);
-        }
-
-        self.cells[self.pos] = val;
-    }
-
-    fn modify_cur_cell(&mut self, op: CellOp) {
-        if op == CellOp::Inc {
-            self.set_cur_cell(self.read_cur_cell() + 1);
-        } else {
-            self.set_cur_cell(self.read_cur_cell() - 1);
-        }
-    }
+pub enum IrLink<'ir> {
+    Forward(&'ir IrBlock<'ir>),
+    Back(&'ir IrBlock<'ir>),
+    End
 }
 
-impl Interpreter {
-    pub fn new(stdin: Stdin, stderr: Stderr, stdout: Stdout) -> Self {
-        Self {
-            stdin,
-            stderr,
-            stdout,
-            state: BrainfuckState {
-                cells: Vec::new(),
-                pos: 0,
-            },
-        }
+pub struct IrBlock<'ir> {
+    ir: Vec<IrOp>,
+
+    next: IrLink<'ir>,
+}
+
+impl IrGen {
+    pub fn new(program: Vec<u8>) -> Self {
+        Self { program }
     }
 
-    pub fn state(&self) -> &BrainfuckState {
-        &self.state
-    }
+    pub fn gen(&mut self) -> () {
+        let mut bump = Bump::new();
 
-    pub fn execute(&mut self, program: &[u8]) -> Result<()> {
-        let mut instr_pointer = 0;
+        let mut last_block = None;
 
-        let mut stdout = self.stdout.lock();
-        let mut stdin = self.stdin.lock();
+        let mut ir = Vec::new();
+        
+        for command in self.program {
+            match command {
+                b'+' => ir.push(IrOp::Inc),
+                b'-' => ir.push(IrOp::Dec),
+                b'>' => ir.push(IrOp::MvRight),
+                b'<' => ir.push(IrOp::MvLeft),
+                b'.' => ir.push(IrOp::Out),
+                b',' => ir.push(IrOp::In),
 
-        while let Some(command) = program.get(instr_pointer) {
-            match *command {
-                b'>' => self.state.pos += 1,
-                b'<' if self.state.pos == 0 => bail!("Attempted to decrement data pointer below 0"),
-                b'<' => self.state.pos -= 1,
-                b'+' => self.state.modify_cur_cell(CellOp::Inc),
-                b'-' => self.state.modify_cur_cell(CellOp::Dec),
-                b'.' => {
-                    stdout
-                        .write_all(&[self.state.read_cur_cell()])
-                        .expect("writing to `stdout` failed");
-                }
-                b',' => {
-                    let mut buff = [0; 1];
-                    stdin
-                        .read_exact(&mut buff)
-                        .expect("reading from `stdin` failed");
-
-                    self.state.set_cur_cell(buff[0]);
-                }
-
-                b'[' if self.state.read_cur_cell() == 0 => {
-                    let mut depth = 0;
-                    let mut pos = instr_pointer;
-
-                    loop {
-                        pos += 1;
-
-                        match program.get(pos) {
-                            Some(b'[') => depth += 1,
-                            Some(b']') if depth > 0 => depth -= 1,
-                            Some(b']') => {
-                                // Reached the matching bracket
-                                // The next instruction we want to execute is the one AFTER this,
-                                // but we increment instr_pointer at the end of the loop
-                                instr_pointer = pos;
-                                break;
-                            }
-                            None => bail!("Unmatched '[' at position {}", instr_pointer),
-                            _ => {}
-                        }
+                br @ b'[' | br @ b']' => {
+                    let next = match br => {
+                        b'[' => IrLink::Forward()
                     }
+                    let block = bump.alloc(IrBlock { ir })
                 }
 
-                b']' if self.state.read_cur_cell() != 0 => {
-                    let mut depth = 0;
-                    let mut pos = instr_pointer;
-
-                    loop {
-                        pos -= 1;
-
-                        match program.get(pos) {
-                            Some(b']') => depth += 1,
-                            Some(b'[') if depth > 0 => depth -= 1,
-                            Some(b'[') => {
-                                // Reached the matching bracket
-                                // The next instruction we want to execute is the one AFTER this,
-                                // but we increment instr_pointer at the end of the loop
-                                instr_pointer = pos;
-                                break;
-                            }
-                            None => bail!("Unmatched ']' at position {}", instr_pointer),
-                            _ => {}
-                        }
-                    }
-                }
-
-                _ => {}
+                _ => continue
             }
-
-            instr_pointer += 1;
         }
 
-        Ok(())
+        todo!()
     }
 }
