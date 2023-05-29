@@ -1,6 +1,6 @@
 use std::{
-    cmp, fs,
-    io::{self, Read, Write},
+    fs,
+    io::{self, Write},
     path::PathBuf,
 };
 

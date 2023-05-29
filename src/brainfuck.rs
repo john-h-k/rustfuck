@@ -1,7 +1,6 @@
 use anyhow::Result;
 use std::{
-    collections::hash_set::SymmetricDifference,
-    io::{self, Read, Stderr, Stdin, Stdout, Write},
+    io::{Read, Stderr, Stdin, Stdout, Write},
 };
 
 pub struct Interpreter {
