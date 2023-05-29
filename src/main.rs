@@ -13,7 +13,13 @@ mod brainfuck;
 use brainfuck::Interpreter;
 
 #[derive(Parser)]
-#[command(author, version, about, long_about = None)]
+#[command(name = "rustfuck")]
+#[command(author = "John Harry Kelly <johnharrykelly@gmail.com>")]
+#[command(version = "1.0")]
+#[command(
+    help_template = "{name}: {about-section}Version: {version}\nWritten by {author-with-newline}\n{usage-heading} {usage}\n{all-args} {tab}"
+)]
+#[command(about, long_about = None)]
 struct Args {
     /// The file to execute
     file: PathBuf,
