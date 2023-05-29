@@ -74,6 +74,10 @@ impl Interpreter {
         while let Some(command) = program.get(instr_pointer) {
             match *command {
                 b'>' => self.state.pos += 1,
+                b'<' if self.state.pos == 0 => bail!(
+                    "Tried to decrement data pointer below 0 at position {}",
+                    instr_pointer
+                ),
                 b'<' => self.state.pos -= 1,
                 b'+' => self.state.modify_cur_cell(CellOp::Inc),
                 b'-' => self.state.modify_cur_cell(CellOp::Dec),

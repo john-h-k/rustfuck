@@ -69,7 +69,12 @@ fn repl(mut interpreter: Interpreter) -> Result<()> {
             continue;
         }
 
-        interpreter.execute(line_bytes)?;
+        if let Err(err) = interpreter.execute(line_bytes) {
+            eprintln!("Error: {}", err);
+            eprintln!("Line was discarded");
+        }
+
+        line.clear();
 
         let state = interpreter.state();
 
