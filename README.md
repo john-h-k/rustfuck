@@ -19,4 +19,5 @@ that can be used to toy around with brainfuck more easily. To use the REPL, simp
 * Hitting enter with no input/non brainfuck input will simply show the current interpreter state
 * Entering brainfuck commands will, well, execute them
 
-There is an example `hello_world.bf` in the [examples](./examples). It is taken from the informative Wikipedia page for [brainfuck](https://en.wikipedia.org/wiki/Brainfuck).
+There is an example `hello_world.b` in the [examples](./examples). It is taken from the informative Wikipedia page for [brainfuck](https://en.wikipedia.org/wiki/Brainfuck).
+
