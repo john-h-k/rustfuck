@@ -4,9 +4,8 @@ use std::{
     path::PathBuf,
 };
 
-use clap::Parser;
-
 use anyhow::Result;
+use clap::Parser;
 
 mod brainfuck;
 
