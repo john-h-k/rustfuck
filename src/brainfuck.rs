@@ -1,13 +1,20 @@
 use anyhow::Result;
-use std::io::{self, Read, Write};
+use std::{
+    collections::hash_set::SymmetricDifference,
+    io::{self, Read, Stderr, Stdin, Stdout, Write},
+};
 
-pub struct Interpreter<'a> {
-    program: &'a str,
+pub struct Interpreter {
+    state: BrainfuckState,
+    stdin: Stdin,
+    stdout: Stdout,
+    stderr: Stderr,
 }
 
-struct BrainfuckState {
-    cells: Vec<u8>,
-    pos: usize,
+#[derive(Debug)]
+pub struct BrainfuckState {
+    pub cells: Vec<u8>,
+    pub pos: usize,
 }
 
 #[derive(PartialEq, Eq)]
@@ -17,9 +24,13 @@ enum CellOp {
 }
 
 impl BrainfuckState {
-    pub fn read_cur_cell(&self) -> u8 {
+    pub fn read_cell(&self, i: usize) -> u8 {
         // If the cell is OOB, it cannot have been written to, so must be zero
-        *self.cells.get(self.pos).unwrap_or(&0u8)
+        *self.cells.get(i).unwrap_or(&0u8)
+    }
+
+    pub fn read_cur_cell(&self) -> u8 {
+        self.read_cell(self.pos)
     }
 
     fn set_cur_cell(&mut self, val: u8) {
@@ -39,32 +50,38 @@ impl BrainfuckState {
     }
 }
 
-impl<'a> Interpreter<'a> {
-    pub fn new(program: &'a str) -> Self {
-        Self { program }
+impl Interpreter {
+    pub fn new(stdin: Stdin, stderr: Stderr, stdout: Stdout) -> Self {
+        Self {
+            stdin,
+            stderr,
+            stdout,
+            state: BrainfuckState {
+                cells: Vec::new(),
+                pos: 0,
+            },
+        }
     }
 
-    pub fn execute(&self) -> Result<()> {
-        let program = self.program.as_bytes();
+    pub fn state(&self) -> &BrainfuckState {
+        &self.state
+    }
+
+    pub fn execute(&mut self, program: &[u8]) -> Result<()> {
         let mut instr_pointer = 0;
 
-        let mut state = BrainfuckState {
-            cells: Vec::new(),
-            pos: 0,
-        };
-
-        let mut stdout = io::stdout().lock();
-        let mut stdin = io::stdin().lock();
+        let mut stdout = self.stdout.lock();
+        let mut stdin = self.stdin.lock();
 
         while let Some(command) = program.get(instr_pointer) {
             match *command {
-                b'>' => state.pos += 1,
-                b'<' => state.pos -= 1,
-                b'+' => state.modify_cur_cell(CellOp::Inc),
-                b'-' => state.modify_cur_cell(CellOp::Dec),
+                b'>' => self.state.pos += 1,
+                b'<' => self.state.pos -= 1,
+                b'+' => self.state.modify_cur_cell(CellOp::Inc),
+                b'-' => self.state.modify_cur_cell(CellOp::Dec),
                 b'.' => {
                     stdout
-                        .write_all(&[state.read_cur_cell()])
+                        .write_all(&[self.state.read_cur_cell()])
                         .expect("writing to `stdout` failed");
                 }
                 b',' => {
@@ -73,10 +90,10 @@ impl<'a> Interpreter<'a> {
                         .read_exact(&mut buff)
                         .expect("reading from `stdin` failed");
 
-                    state.set_cur_cell(buff[0]);
+                    self.state.set_cur_cell(buff[0]);
                 }
 
-                b'[' if state.read_cur_cell() == 0 => {
+                b'[' if self.state.read_cur_cell() == 0 => {
                     let mut depth = 0;
                     let mut pos = instr_pointer;
 
@@ -98,7 +115,7 @@ impl<'a> Interpreter<'a> {
                     }
                 }
 
-                b']' if state.read_cur_cell() != 0 => {
+                b']' if self.state.read_cur_cell() != 0 => {
                     let mut depth = 0;
                     let mut pos = instr_pointer;
 
