@@ -35,6 +35,8 @@ pub enum HirOp {
     In,
     Out,
 
+    SetZero,
+
     BrFor,
     BrBack,
 }
@@ -71,6 +73,14 @@ impl IrGen {
         let mut pos = 0;
 
         while let Some(bf_op) = bf.get(pos) {
+            let next_3 = bf.get(pos..pos + 3);
+
+            if let Some([BfOp::BrFor, BfOp::Inc | BfOp::Dec, BfOp::BrBack]) = next_3 {
+                result.push(HirOp::SetZero);
+                pos += 3;
+                continue;
+            }
+
             let hir_op = match bf_op {
                 BfOp::Inc | BfOp::Dec => {
                     let mod_ops = bf[pos..]
@@ -203,6 +213,9 @@ impl HirInterpreter {
 
         while let Some(ref command) = program.get(instr_pointer) {
             match command {
+                HirOp::SetZero => {
+                    state.set_cur_cell(0);
+                }
                 HirOp::Modify(delta) => {
                     state.modify_cur_cell_with(|c| {
                         add_offset_8(c, *delta as i8);
@@ -224,13 +237,16 @@ impl HirInterpreter {
 
                     state.set_cur_cell(buff[0]);
                 }
-                HirOp::BrFor if state.read_cur_cell() == 0 => {
-                    instr_pointer = branch_table[instr_pointer];
+                HirOp::BrFor => {
+                    if state.read_cur_cell() == 0 {
+                        instr_pointer = branch_table[instr_pointer];
+                    }
                 }
-                HirOp::BrBack if state.read_cur_cell() != 0 => {
-                    instr_pointer = branch_table[instr_pointer];
+                HirOp::BrBack => {
+                    if state.read_cur_cell() != 0 {
+                        instr_pointer = branch_table[instr_pointer];
+                    }
                 }
-                _ => {}
             };
 
             instr_pointer += 1;
