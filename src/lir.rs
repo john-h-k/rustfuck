@@ -19,7 +19,7 @@ pub enum LirOp<'a> {
     Move(isize),
 
     WriteZero,       // Zeroes the current cell
-    Hop(isize, i8), // Moves +/- in hops of n.0 until it finds a non-zero cell, offsetting the target by n.1 each time
+    Hop(isize),      // Moves +/- in hops of n.0 until it finds a non-zero cell
     MoveCell(isize), // Adds the content of the current cell to another cell
 
     In,
@@ -46,7 +46,7 @@ impl IrLike for LirOp<'_> {
             LirOp::BrFor => "[Br->".into(),
             LirOp::BrBack => "<-Br]".into(),
             LirOp::WriteZero => "Zero".into(),
-            LirOp::Hop(mov_delta, mod_delta) => format!("Hop({mov_delta}, {mod_delta})"),
+            LirOp::Hop(mov_delta) => format!("Hop({mov_delta})"),
             LirOp::MoveCell(delta) => format!("MovCell({delta})"),
             LirOp::Meta(comment) => format!("<{comment}>"),
         }
@@ -132,10 +132,7 @@ impl LirGen {
 
         match loop_content {
             [HirOp::Modify(_)] => Some((LirOp::WriteZero, 2)),
-            [HirOp::Move(delta)] => Some((LirOp::Hop(*delta, 0), 2)),
-            [HirOp::Modify(mod_delta), HirOp::Move(mov_delta)] => {
-                Some((LirOp::Hop(*mov_delta, *mod_delta as i8), 3))
-            }
+            //[HirOp::Move(delta)] => Some((LirOp::Hop(*delta), 2)),
             [HirOp::Modify(-1), HirOp::Move(delta), HirOp::Modify(1), HirOp::Move(ndelta)]
                 if *delta == -ndelta =>
             {
@@ -164,9 +161,6 @@ impl LirGen {
         let loop_content = &lir[1..loop_end];
 
         match loop_content {
-            [LirOp::Modify(mod_delta), LirOp::Move(mov_delta)] => {
-                Some((LirOp::Hop(*mov_delta, *mod_delta as i8), 3))
-            }
             _ => {
                 trace!("missed LIR loop-opt for {:?}", loop_content.to_compact());
                 None
@@ -180,8 +174,6 @@ pub struct LirInterpreter;
 impl LirInterpreter {
     pub fn execute(program: &[LirOp]) -> Result<()> {
         info!("Starting LIR interpreter");
-
-        eprintln!("{}", program.to_compact());
 
         if cfg!(feature = "trace") {
             eprintln!("[Tracing enabled]");
@@ -273,13 +265,8 @@ impl LirInterpreter {
                     }
                 }
                 LirOp::WriteZero => state.set_cur_cell(0),
-                LirOp::Hop(mov_delta, mod_delta) => {
+                LirOp::Hop(mov_delta) => {
                     while state.read_cur_cell() > 0 {
-                        // TODO: handle overflow
-                        if *mod_delta != 0 {
-                            state.modify_cur_cell_with(|c| add_offset_8(c, *mod_delta));
-                        }
-
                         add_offset_size(&mut state.pos, *mov_delta);
                     }
                 }

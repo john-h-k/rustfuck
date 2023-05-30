@@ -2,6 +2,7 @@ use std::{
     fs,
     io::{self, Write},
     path::PathBuf,
+    time::{Duration, Instant},
 };
 
 use anyhow::Result;
@@ -9,11 +10,13 @@ use clap::Parser;
 
 use crate::{
     hir::{HirGen, HirInterpreter},
+    jit::Jit,
     lir::{LirGen, LirInterpreter},
 };
 
 mod hir;
 mod ir;
+mod jit;
 mod lir;
 mod state;
 
@@ -35,6 +38,9 @@ struct Args {
 
     #[arg(long)]
     lir: bool,
+
+    #[arg(long)]
+    jit: bool,
 }
 
 fn main() -> Result<()> {
@@ -50,17 +56,35 @@ fn main() -> Result<()> {
 
     let hir = ir_gen.gen();
 
-    if args.hir {
-        HirInterpreter::execute(&hir)?;
+    let (duration, result) = if args.hir {
+        run(|| HirInterpreter::execute(&hir))
     } else if args.lir {
         let lir = LirGen::gen_ir(&hir);
 
-        LirInterpreter::execute(&lir)?;
+        run(|| LirInterpreter::execute(&lir))
+    } else if args.jit {
+        let lir = LirGen::gen_ir(&hir);
+
+        run(|| Jit::jit(&lir))
     } else {
         panic!("pass a backend!");
-    }
+    };
+
+    result?;
+
+    println!("Execution took: {:?}", duration);
 
     Ok(())
+}
+
+fn run(f: impl FnOnce() -> Result<()>) -> (Duration, Result<()>) {
+    let start = Instant::now();
+
+    let result = f();
+
+    let end = Instant::now();
+
+    (end - start, result)
 }
 
 // // # of cells shown either side of current one

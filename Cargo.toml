@@ -11,6 +11,8 @@ authors = ["John Harry Kelly <johnharrykelly@gmail.com>"]
 anyhow = "1.0.71"
 bumpalo = "3.13.0"
 clap = { version = "4.3.0", features = ["derive"] }
+dynasm = "2.0.0"
+dynasmrt = "2.0.0"
 env_logger = "0.10.0"
 human-panic = "1.1.4"
 itertools = "0.10.5"

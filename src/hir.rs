@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::Result;
 use bumpalo::Bump;
-use log::info;
+use log::{info, trace};
 use tap::prelude::*;
 
 use crate::{
@@ -67,7 +67,6 @@ impl IrLike for HirOp {
             HirOp::Out => ".".into(),
             HirOp::BrFor => "[".into(),
             HirOp::BrBack => "]".into(),
-            _ => "!".into(),
         }
     }
 }
@@ -97,7 +96,7 @@ impl HirGen {
             }
         }
 
-        Self::lower(&ir)
+        Self::lower(&ir).tap(|ir| trace!("Lowered HIR: {}", ir.to_compact()))
     }
 
     fn lower(bf: &[BfOp]) -> Vec<HirOp> {
