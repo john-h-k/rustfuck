@@ -1,4 +1,4 @@
-use std::str::CharIndices;
+use std::{str::CharIndices, io::{self, Write, Read}, ops::AddAssign};
 use anyhow::Result;
 use bumpalo::Bump;
 
@@ -39,7 +39,7 @@ impl IrGen {
         Self { program }
     }
 
-    pub fn gen(&mut self) -> () {
+    pub fn gen(&mut self) -> Vec<HirOp> {
         let mut ir = Vec::new();
         
         for command in self.program {
@@ -57,7 +57,7 @@ impl IrGen {
             }
         }
 
-        todo!()
+        Self::lower(ir)
     }
 
     fn lower(bf: &[BfOp]) -> Vec<HirOp> {
@@ -132,15 +132,55 @@ impl BrainfuckState {
     }
 }
 
+fn add_offset(dst: &mut impl AddAssign<Rhs=usize>, delta: isize) -> &mut usize {
+    if delta > 0 {
+        *dst += delta as usize
+    } else {
+        *dst += delta.abs() as usize
+    };
+
+    dst
+}
+
 pub struct HirInterpreter;
 
 impl HirInterpreter {
     pub fn execute(program: &[HirOp]) -> Result<()> {
-        let table = Self::gen_branch_table(program);
+        let branch_table = Self::gen_branch_table(program)?;
 
         let mut instr_pointer = 0;
         let mut state = BrainfuckState::new();
+
+        let mut stdin = io::stdin().lock();
+        let mut stdout = io::stdout().lock();
         
+        while let Some(&command) = program.get(instr_pointer) {
+            match command {
+                HirOp::Modify(delta) => { state.modify_cur_cell_with(|c| { add_offset(c, delta); }); },
+                HirOp::Move(delta) => { add_offset(&mut state.pos, delta); },
+                HirOp::Out => {
+                    stdout
+                        .write_all(&[state.read_cur_cell()])
+                        .expect("writing to `stdout` failed");
+                }
+                HirOp::In => {
+                    let mut buff = [0; 1];
+                    stdin
+                        .read_exact(&mut buff)
+                        .expect("reading from `stdin` failed");
+
+                    state.set_cur_cell(buff[0]);
+                }
+                HirOp::BrFor if state.read_cur_cell() == 0 => {
+                    instr_pointer = branch_table[instr_pointer];
+                }
+                HirOp::BrBack if state.read_cur_cell() != 0 => {
+                    instr_pointer = branch_table[instr_pointer];
+                }
+                _ => {}
+            };
+        }
+
         Ok(())
     }
 
