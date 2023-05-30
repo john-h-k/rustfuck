@@ -7,9 +7,15 @@ use std::{
 use anyhow::Result;
 use clap::Parser;
 
-use crate::brainfuck::{HirInterpreter, IrGen};
+use crate::{
+    hir::{HirGen, HirInterpreter},
+    lir::{LirGen, LirInterpreter},
+};
 
-mod brainfuck;
+mod hir;
+mod ir;
+mod lir;
+mod state;
 
 #[derive(Parser)]
 #[command(name = "rustfuck")]
@@ -23,21 +29,36 @@ struct Args {
     /// The file to execute
     /// If not provided, will enter REPL mode
     file: Option<PathBuf>,
+
+    #[arg(long)]
+    hir: bool,
+
+    #[arg(long)]
+    lir: bool,
 }
 
 fn main() -> Result<()> {
     human_panic::setup_panic!();
+    env_logger::init();
 
     let args = Args::parse();
 
     let content = fs::read_to_string(args.file.expect("repl disabled"))?;
     let content = Vec::from(content.as_bytes());
 
-    let mut ir_gen = IrGen::new(content);
+    let mut ir_gen = HirGen::new(content);
 
     let hir = ir_gen.gen();
 
-    HirInterpreter::execute(&hir)?;
+    if args.hir {
+        HirInterpreter::execute(&hir)?;
+    } else if args.lir {
+        let lir = LirGen::gen_ir(&hir);
+
+        LirInterpreter::execute(&lir)?;
+    } else {
+        panic!("pass a backend!");
+    }
 
     Ok(())
 }
