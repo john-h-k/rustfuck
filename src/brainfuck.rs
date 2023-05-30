@@ -1,4 +1,9 @@
-use std::{str::CharIndices, io::{self, Write, Read}, ops::AddAssign};
+use std::{
+    io::{self, Read, Write},
+    ops::AddAssign,
+    str::CharIndices,
+};
+
 use anyhow::Result;
 use bumpalo::Bump;
 
@@ -26,7 +31,7 @@ pub enum BfOp {
 #[derive(Debug, PartialEq, Eq)]
 pub enum HirOp {
     Modify(isize), // add or subtract
-    Move(isize), // left or right movement
+    Move(isize),   // left or right movement
     In,
     Out,
 
@@ -41,8 +46,8 @@ impl IrGen {
 
     pub fn gen(&mut self) -> Vec<HirOp> {
         let mut ir = Vec::new();
-        
-        for command in self.program {
+
+        for command in self.program.iter() {
             match command {
                 b'+' => ir.push(BfOp::Inc),
                 b'-' => ir.push(BfOp::Dec),
@@ -51,40 +56,74 @@ impl IrGen {
                 b'.' => ir.push(BfOp::Out),
                 b',' => ir.push(BfOp::In),
                 b'[' => ir.push(BfOp::BrFor),
-                b']' => ir.push(BfOp::BrBack)
+                b']' => ir.push(BfOp::BrBack),
 
-                _ => continue
+                _ => continue,
             }
         }
 
-        Self::lower(ir)
+        Self::lower(&ir)
     }
 
     fn lower(bf: &[BfOp]) -> Vec<HirOp> {
         let mut result = Vec::new();
 
-        let iter = bf.iter().peekable();
+        let mut pos = 0;
 
-        while let Some(bf_op) = iter.peek() {
+        while let Some(bf_op) = bf.get(pos) {
             let hir_op = match bf_op {
                 BfOp::Inc | BfOp::Dec => {
-                    let mod_ops = iter.take_while(|op| matches!(op, BfOp::Inc | BfOp::Dec));
+                    let mod_ops = bf[pos..]
+                        .iter()
+                        .take_while(|op| matches!(op, BfOp::Inc | BfOp::Dec));
 
-                    let delta = mod_ops.map(|&op| if op == BfOp::Inc { 1 } else { -1 }).sum();
+                    let delta = mod_ops
+                        .map(|op| {
+                            pos += 1;
+                            if *op == BfOp::Inc {
+                                1
+                            } else {
+                                -1
+                            }
+                        })
+                        .sum();
 
                     HirOp::Modify(delta)
-                },
+                }
                 BfOp::MvRight | BfOp::MvLeft => {
-                    let mod_ops = iter.take_while(|op| matches!(op, BfOp::MvRight | BfOp::MvLeft));
+                    let mod_ops = bf[pos..]
+                        .iter()
+                        .take_while(|op| matches!(op, BfOp::MvRight | BfOp::MvLeft));
 
-                    let delta = mod_ops.map(|&op| if op == BfOp::MvRight { 1 } else { -1 }).sum();
+                    let delta = mod_ops
+                        .map(|op| {
+                            pos += 1;
+                            if *op == BfOp::MvRight {
+                                1
+                            } else {
+                                -1
+                            }
+                        })
+                        .sum();
 
                     HirOp::Move(delta)
-                },
-                BfOp::In => HirOp::In,
-                BfOp::Out => HirOp::Out,
-                BfOp::BrFor => HirOp::BrFor,
-                BfOp::BrBack => HirOp::BrBack,
+                }
+                BfOp::In => {
+                    pos += 1;
+                    HirOp::In
+                }
+                BfOp::Out => {
+                    pos += 1;
+                    HirOp::Out
+                }
+                BfOp::BrFor => {
+                    pos += 1;
+                    HirOp::BrFor
+                }
+                BfOp::BrBack => {
+                    pos += 1;
+                    HirOp::BrBack
+                }
             };
 
             result.push(hir_op);
@@ -94,7 +133,6 @@ impl IrGen {
     }
 }
 
-
 #[derive(Debug)]
 pub struct BrainfuckState {
     pub cells: Vec<u8>,
@@ -103,9 +141,12 @@ pub struct BrainfuckState {
 
 impl BrainfuckState {
     pub fn new() -> Self {
-        Self { cells: Vec::new(), pos: 0 }
+        Self {
+            cells: Vec::new(),
+            pos: 0,
+        }
     }
-    
+
     pub fn read_cell(&self, i: usize) -> u8 {
         // If the cell is OOB, it cannot have been written to, so must be zero
         *self.cells.get(i).unwrap_or(&0u8)
@@ -128,27 +169,29 @@ impl BrainfuckState {
             self.cells.resize(self.pos + 1, 0);
         }
 
-        f(&mut self.cells[self.pos]);        
+        f(&mut self.cells[self.pos]);
     }
 }
 
-fn add_offset(dst: &mut impl AddAssign<Rhs=usize>, delta: isize) -> &mut usize {
+fn add_offset_size(dst: &mut usize, delta: isize) {
     if delta > 0 {
         *dst += delta as usize
     } else {
-        *dst += delta.abs() as usize
+        *dst -= delta.unsigned_abs()
     };
+}
 
-    dst
+fn add_offset_8(dst: &mut u8, delta: i8) {
+    if delta > 0 {
+        *dst += delta as u8
+    } else {
+        *dst -= delta.unsigned_abs()
+    };
 }
 
 pub struct HirInterpreter;
 
 impl HirInterpreter {
-    pub fn new() -> Self {
-        Self
-    }
-    
     pub fn execute(program: &[HirOp]) -> Result<()> {
         let branch_table = Self::gen_branch_table(program)?;
 
@@ -157,11 +200,17 @@ impl HirInterpreter {
 
         let mut stdin = io::stdin().lock();
         let mut stdout = io::stdout().lock();
-        
-        while let Some(&command) = program.get(instr_pointer) {
+
+        while let Some(ref command) = program.get(instr_pointer) {
             match command {
-                HirOp::Modify(delta) => { state.modify_cur_cell_with(|c| { add_offset(c, delta); }); },
-                HirOp::Move(delta) => { add_offset(&mut state.pos, delta); },
+                HirOp::Modify(delta) => {
+                    state.modify_cur_cell_with(|c| {
+                        add_offset_8(c, *delta as i8);
+                    });
+                }
+                HirOp::Move(delta) => {
+                    add_offset_size(&mut state.pos, *delta);
+                }
                 HirOp::Out => {
                     stdout
                         .write_all(&[state.read_cur_cell()])
@@ -183,6 +232,8 @@ impl HirInterpreter {
                 }
                 _ => {}
             };
+
+            instr_pointer += 1;
         }
 
         Ok(())
@@ -193,7 +244,7 @@ impl HirInterpreter {
 
         let mut instr_pointer = 0;
 
-        while let Some(&command) = program.get(instr_pointer) {
+        while let Some(ref command) = program.get(instr_pointer) {
             if let HirOp::BrFor = command {
                 let mut depth = 0;
                 let mut pos = instr_pointer;

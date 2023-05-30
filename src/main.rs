@@ -7,7 +7,7 @@ use std::{
 use anyhow::Result;
 use clap::Parser;
 
-use crate::brainfuck::IrGen;
+use crate::brainfuck::{HirInterpreter, IrGen};
 
 mod brainfuck;
 
@@ -31,12 +31,13 @@ fn main() -> Result<()> {
     let args = Args::parse();
 
     let content = fs::read_to_string(args.file.expect("repl disabled"))?;
+    let content = Vec::from(content.as_bytes());
 
-    let ir_gen = IrGen::new(content.as_bytes());
+    let mut ir_gen = IrGen::new(content);
 
     let hir = ir_gen.gen();
 
-    let interpreter = HirInterpreter::new();
+    HirInterpreter::execute(&hir)?;
 
     Ok(())
 }
