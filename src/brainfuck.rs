@@ -145,6 +145,10 @@ fn add_offset(dst: &mut impl AddAssign<Rhs=usize>, delta: isize) -> &mut usize {
 pub struct HirInterpreter;
 
 impl HirInterpreter {
+    pub fn new() -> Self {
+        Self
+    }
+    
     pub fn execute(program: &[HirOp]) -> Result<()> {
         let branch_table = Self::gen_branch_table(program)?;
 
