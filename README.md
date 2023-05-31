@@ -11,13 +11,16 @@ I wanted to write a brainfuck interpreter. They are inherently quite useless
 
 ## What does it have?
 
-`rustfuck` can execute both brainfuck files (using `rustfuck <file>`) as well as containing a simple REPL for brainfuck
-that can be used to toy around with brainfuck more easily. To use the REPL, simply run `rustfuck`. It is extremely simple to use:
+`rustfuck` contains 3 interpreters as well as an optimising JIT-compiler (currently only available on AArch64).
 
-* `q` (or `Ctrl-c`) to quit
-* Any arbitrary text will be ignored (as it would be in brainfuck)
-* Hitting enter with no input/non brainfuck input will simply show the current interpreter state
-* Entering brainfuck commands will, well, execute them
+The 4 backends:
+* Raw interpreter - executes brainfuck, as-is
+ * takes around 30s on `mandelbrot.b`
+* HIR interpreter - only fuses `+-`s and `<>`s, as well as creating a branch lookup table
+ * takes around 5s on `mandelbrot.b`
+* LIR interpreter - additiionally performs a bunch of different loop optimisations to
+ * takes around 2.7s on `mandelbrot.b`
+* JIT compiler - emits raw machine code
+ * takes around 600ms on `mandelbrot.b`
 
-There is an example `hello_world.b` in the [examples](./examples). It is taken from the informative Wikipedia page for [brainfuck](https://en.wikipedia.org/wiki/Brainfuck).
-
+There are several examples in the `examples` folder, including `hello_world` and `mandelbrot`.

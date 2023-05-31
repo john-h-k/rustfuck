@@ -11,7 +11,7 @@ use crate::lir::LirOp;
 pub struct Jit;
 
 impl Jit {
-    pub fn jit(program: &[LirOp]) -> Result<extern "C" fn(*mut u8, *mut u8)> {
+    pub fn jit(program: &[LirOp]) -> Result<(ExecutableBuffer, extern "C" fn(*mut u8, *mut u8))> {
         trace!("Jitting Lir: {}", program.to_compact());
 
         let mut branch_table = VecDeque::new();
@@ -193,11 +193,10 @@ impl Jit {
         );
 
         let func = asm.finalize().expect("asm gen failed");
-
         // Buffer `func` stays around forever, no need to return it
-        let func: extern "C" fn(cells: *mut u8, buff: *mut u8) -> () =
+        let func_ptr: extern "C" fn(cells: *mut u8, buff: *mut u8) -> () =
             unsafe { mem::transmute(func.ptr(AssemblyOffset(0))) };
 
-        Ok(func)
+        Ok((func, func_ptr))
     }
 }

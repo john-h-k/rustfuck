@@ -78,7 +78,7 @@ fn main() -> Result<()> {
 
             let (duration, func) = run(|| Jit::jit(&lir));
 
-            let func = func?;
+            let (buff, func) = func?;
 
             println!("JIT took {:?}", duration);
 
@@ -91,6 +91,8 @@ fn main() -> Result<()> {
             });
 
             io::stdout().write_all(&buff[0..buff.iter().position(|&b| b == 0).unwrap()])?;
+
+            let _ = buff; // Backing memory is now safe to drop
 
             result
         } else {
