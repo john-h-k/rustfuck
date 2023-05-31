@@ -4,35 +4,31 @@ use std::{io, mem, ptr, slice, u8};
 
 use anyhow::Result;
 use dynasmrt::{dynasm, AssemblyOffset, DynasmApi, DynasmLabelApi};
+use log::trace;
 use tap::Tap;
 
+use crate::ir::IrLike;
 use crate::lir::LirOp;
 
 pub struct Jit;
 
 impl Jit {
     pub fn jit(program: &[LirOp]) -> Result<()> {
+        trace!("Jitting Lir: {}", program.to_compact());
+
         let mut branch_table = VecDeque::new();
 
         let mut asm = dynasmrt::aarch64::Assembler::new().unwrap();
 
-        let split_4 = |val: &isize| {
-            (
-                *val as u16,
-                val >> 16 as u32,
-                val >> 32 as u16,
-                val >> 48 as u16,
-            )
-        };
-
         for op in program {
             match op {
                 LirOp::Modify(delta) => {
-                    if delta > 0 {
+                    let abs_delta = (*delta as i64).unsigned_abs();
+                    if *delta > 0 {
                         dynasm!(asm
                             ; .arch aarch64
                             ; ldrb w2, [x0]
-                            ; mov x3, delta as u64
+                            ; mov x3, abs_delta
                             ; add x2, x2, x3
                             ; and x2, x2, #0xFF
                             ; strb w2, [x0]
@@ -41,21 +37,29 @@ impl Jit {
                         dynasm!(asm
                             ; .arch aarch64
                             ; ldrb w2, [x0]
-                            ; mov x3, delta as u64
-                            ; add x2, x2, x3
+                            ; mov x3, abs_delta
+                            ; sub x2, x2, x3
                             ; and x2, x2, #0xFF
                             ; strb w2, [x0]
                         )
                     }
                 }
                 LirOp::Move(delta) => {
-                    dbg!(delta);
-                    let delta = i64::try_from(*delta).expect("insane bounds");
-                    dynasm!(asm
-                        ; .arch aarch64
-                        ; mov x3, delta as u64
-                        ; add x0, x0, x3
-                    )
+                    let abs_delta = (*delta as i64).unsigned_abs();
+
+                    if *delta > 0 {
+                        dynasm!(asm
+                            ; .arch aarch64
+                            ; mov x3, abs_delta
+                            ; add x0, x0, x3
+                        )
+                    } else {
+                        dynasm!(asm
+                            ; .arch aarch64
+                            ; mov x3, abs_delta
+                            ; sub x0, x0, x3
+                        )
+                    }
                 }
                 LirOp::WriteZero => {
                     dynasm!(asm
