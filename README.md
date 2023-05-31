@@ -15,12 +15,12 @@ I wanted to write a brainfuck interpreter. They are inherently quite useless
 
 The 4 backends:
 * Raw interpreter - executes brainfuck, as-is
- * takes around 30s on `mandelbrot.b`
+    * takes around 30s on `mandelbrot.b`
 * HIR interpreter - only fuses `+-`s and `<>`s, as well as creating a branch lookup table
- * takes around 5s on `mandelbrot.b`
+    * takes around 5s on `mandelbrot.b`
 * LIR interpreter - additiionally performs a bunch of different loop optimisations to
- * takes around 2.7s on `mandelbrot.b`
-* JIT compiler - emits raw machine code
- * takes around 600ms on `mandelbrot.b`
+    * takes around 2.7s on `mandelbrot.b`
+* JIT compiler - emits raw machine code (doesn't currently support reading from STDIN)
+    * takes around 600ms on `mandelbrot.b`
 
 There are several examples in the `examples` folder, including `hello_world` and `mandelbrot`.
