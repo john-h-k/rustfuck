@@ -68,28 +68,62 @@ impl Jit {
                     )
                 }
                 LirOp::Hop(delta) => {
-                    let delta = i32::try_from(*delta).expect("insane bounds");
-                    dynasm!(asm
-                        ; .arch aarch64
-                        ; .align 8
-                        ; start:
-                        ; ldrb w2, [x0]
-                        ; cbnz w2, >end
-                        ; add x0, x0, delta as u32
-                        ; b >start
-                        ; .align 8
-                        ; end:
-                    )
+                    let abs_delta = (*delta as i64).unsigned_abs();
+
+                    if *delta > 0 {
+                        dynasm!(asm
+                            ; .arch aarch64
+                            ; mov w3, abs_delta
+                            ; start:
+                            ; ldrb w2, [x0]
+                            ; cbz w2, >end
+                            ; add x0, x0, x3
+                            ; b <start
+                            ; end:
+                        )
+                    } else {
+                        dynasm!(asm
+                            ; .arch aarch64
+                            ; mov w3, abs_delta
+                            ; start:
+                            ; ldrb w2, [x0]
+                            ; cbz w2, >end
+                            ; sub x0, x0, x3
+                            ; b <start
+                            ; end:
+                        )
+                    }
                 }
                 LirOp::MoveCell(delta) => {
-                    let delta = i32::try_from(*delta).expect("insane bounds");
+                    let abs_delta = (*delta as i64).unsigned_abs();
+
+                    dynasm!(asm
+                        ; .arch aarch64
+                        ; mov w4, abs_delta
+                    );
+
+                    if *delta > 0 {
+                        dynasm!(asm
+                            ; .arch aarch64
+                            ; add x5, x0, x4
+                        )
+                    } else {
+                        dynasm!(asm
+                            ; .arch aarch64
+                            ; sub x5, x0, x4
+                        )
+                    }
+
                     dynasm!(asm
                         ; .arch aarch64
                         ; ldrb w2, [x0]
-                        ; ldrb w3, [x0, delta as u32]
+                        ; cbz w2, >skip
+                        ; strb wzr, [x0]
+                        ; ldrb w3, [x5]
                         ; add w2, w2, w3
                         ; and w2, w2, #0xFF
-                        ; strb w2, [x0, delta as u32]
+                        ; strb w2, [x5]
+                        ; skip:
                     )
                 }
                 LirOp::In => {} //todo!("this is gonna be a pain"),
