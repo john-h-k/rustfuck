@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::Parser;
 
 use crate::{
@@ -65,6 +65,10 @@ fn main() -> Result<()> {
 
         run(|| LirInterpreter::execute(&lir))
     } else if args.jit {
+        if cfg!(not(target_arch = "aarch64")) {
+            bail!("The `--jit` feature is currently only supported on ARM64");
+        }
+
         let lir = LirGen::gen_ir(&hir);
 
         run(|| Jit::jit(&lir))
