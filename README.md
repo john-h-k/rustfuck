@@ -1,7 +1,7 @@
 <h1 align="center">rustfuck</h1>
 <div align="center">
  <strong>
-  A simple brainfuck interpreter and REPL written in Rust
+  A brainfuck JIT and interpreter set
  </strong>
 </div>
 
