@@ -160,6 +160,7 @@ impl Jit {
                     )
                 }
                 LirOp::Meta(_) => { /* meta nodes ignored */ }
+                LirOp::CnstMovSet(_) => todo!(),
             }
         }
 

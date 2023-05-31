@@ -1,5 +1,5 @@
 use std::{
-    fs,
+    env, fs,
     io::{self, Write},
     path::PathBuf,
     time::{Duration, Instant},
@@ -44,7 +44,10 @@ struct Args {
 }
 
 fn main() -> Result<()> {
-    human_panic::setup_panic!();
+    if env::var("RAW_PANIC").is_err() {
+        human_panic::setup_panic!();
+    }
+
     env_logger::init();
 
     let args = Args::parse();

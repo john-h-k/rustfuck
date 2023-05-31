@@ -13,7 +13,7 @@ use crate::{
     state::{add_offset_8, add_offset_size, BrainfuckState},
 };
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum LirOp<'a> {
     Modify(isize),
     Move(isize),
@@ -27,6 +27,8 @@ pub enum LirOp<'a> {
 
     BrFor,
     BrBack,
+
+    CnstMovSet(Vec<(/* offset */ isize, /* value to modify by */ isize)>),
 
     // Lets you insert comments into LIR
     Meta(&'a str),
@@ -48,6 +50,7 @@ impl IrLike for LirOp<'_> {
             LirOp::WriteZero => "Zero".into(),
             LirOp::Hop(mov_delta) => format!("Hop({mov_delta})"),
             LirOp::MoveCell(delta) => format!("MovCell({delta})"),
+            LirOp::CnstMovSet(set) => format!("CnstMovSet({set:?})"),
             LirOp::Meta(comment) => format!("<{comment}>"),
         }
     }
@@ -74,7 +77,7 @@ impl LirGen {
                 HirOp::Out => LirOp::Out,
                 HirOp::BrFor => {
                     if let Some((opt, skip)) = Self::try_opt_simple_hir_loop(&hir[pos..]) {
-                        trace!("applied HIR loop-opt {:?}", &opt);
+                        trace!("applied HIR loop-opt {opt:?} (was {:?})", &opt);
                         pos += skip;
                         opt
                     } else {
@@ -94,20 +97,25 @@ impl LirGen {
         let mut pos = 0;
 
         while let Some(op) = lir.get(pos) {
-            let lir2_op = match op {
+            // TODO: make less-allocy (vecs)
+            let lir2_ops = match op {
                 LirOp::BrFor => {
-                    if let Some((opt, skip)) = Self::try_opt_simple_lir_loop(&lir[pos..]) {
-                        trace!("applied LIR loop-opt {:?}", &opt);
+                    if let Some((opts, skip)) = Self::try_opt_simple_lir_loop(&lir[pos..]) {
+                        trace!("applied LIR loop-opt {:?}", &opts);
                         pos += skip;
-                        opt
+                        opts
                     } else {
-                        LirOp::BrFor
+                        vec![LirOp::BrFor]
                     }
                 }
-                &op => op,
+                op =>
+                /* clone is cheap as we don't have any CnstMovSets yet */
+                {
+                    vec![op.clone()]
+                }
             };
 
-            lir2.push(lir2_op);
+            lir2.extend(lir2_ops);
             pos += 1;
         }
 
@@ -118,7 +126,7 @@ impl LirGen {
     fn try_opt_simple_hir_loop(hir: &[HirOp]) -> Option<(LirOp, usize)> {
         let loop_end = hir[1..]
             .iter()
-            .position(|&op| op == HirOp::BrFor || op == HirOp::BrBack)
+            .position(|&op| matches!(op, HirOp::BrFor | HirOp::BrBack))
             .map(|v| /* account for skipping first br */ v + 1);
 
         let loop_end = match loop_end {
@@ -129,6 +137,8 @@ impl LirGen {
 
         assert!(hir[0] == HirOp::BrFor && hir[loop_end] == HirOp::BrBack);
         let loop_content = &hir[1..loop_end];
+
+        trace!("attempting HIR loop-opt for {loop_content:?}");
 
         match loop_content {
             [HirOp::Modify(_)] => Some((LirOp::WriteZero, 2)),
@@ -145,10 +155,10 @@ impl LirGen {
         }
     }
 
-    fn try_opt_simple_lir_loop<'a>(lir: &[LirOp<'a>]) -> Option<(LirOp<'a>, usize)> {
+    fn try_opt_simple_lir_loop<'a>(lir: &[LirOp<'a>]) -> Option<(Vec<LirOp<'a>>, usize)> {
         let loop_end = lir[1..]
             .iter()
-            .position(|&op| op == LirOp::BrFor || op == LirOp::BrBack)
+            .position(|op| matches!(op, LirOp::BrFor | LirOp::BrBack))
             .map(|v| /* account for skipping first br */ v + 1);
 
         let loop_end = match loop_end {
@@ -160,11 +170,41 @@ impl LirGen {
         assert!(lir[0] == LirOp::BrFor && lir[loop_end] == LirOp::BrBack);
         let loop_content = &lir[1..loop_end];
 
-        match loop_content {
-            _ => {
-                trace!("missed LIR loop-opt for {:?}", loop_content.to_compact());
-                None
+        trace!("attempting LIR loop-opt for {loop_content:?}");
+
+        if loop_content
+            .iter()
+            .all(|op| matches!(op, LirOp::Modify(_) | LirOp::Move(_)))
+        {
+            // mod/mov chain
+            // we can transform this into a special node
+
+            let mut set = Vec::new();
+
+            let mut offset = 0isize;
+            for op in loop_content {
+                match op {
+                    LirOp::Move(delta) => offset += delta,
+                    LirOp::Modify(delta) => set.push((offset, *delta)),
+                    _ => unreachable!(),
+                }
             }
+
+            // Key point - we must insert a mov to ensure we remain in the same location at the end
+            let fixup_mov = LirOp::Move(offset);
+
+            Some((
+                vec![
+                    LirOp::BrFor,
+                    LirOp::CnstMovSet(set),
+                    fixup_mov,
+                    LirOp::BrBack,
+                ],
+                loop_content.len() + 1,
+            ))
+        } else {
+            trace!("missed LIR loop-opt for {:?}", loop_content.to_compact());
+            None
         }
     }
 }
@@ -200,14 +240,14 @@ impl LirInterpreter {
 
         while let Some(ref command) = program.get(instr_pointer) {
             if cfg!(feature = "trace") {
-                match **command {
+                match *command {
                     command @ LirOp::BrFor => {
                         last_trace.clear();
-                        last_trace.push(command);
+                        last_trace.push(command.clone());
                         last_trace_start = instr_pointer;
                     }
                     command @ LirOp::BrBack if last_trace_start != usize::MAX => {
-                        last_trace.push(command);
+                        last_trace.push(command.clone());
                         let loc = (last_trace_start, instr_pointer);
                         traces
                             .entry(loc)
@@ -221,7 +261,7 @@ impl LirInterpreter {
                         last_trace_start = usize::MAX;
                         last_trace = Vec::new();
                     }
-                    command if last_trace_start != usize::MAX => last_trace.push(command),
+                    command if last_trace_start != usize::MAX => last_trace.push(command.clone()),
                     _ => {}
                 }
             }
@@ -286,6 +326,18 @@ impl LirInterpreter {
                     }
                 }
                 LirOp::Meta(comment) => info!("META: {}", comment),
+                LirOp::CnstMovSet(set) => {
+                    for (offset, delta) in set {
+                        let mut target = state.pos;
+                        add_offset_size(&mut target, *offset);
+                        let cur = state.read_cell(target);
+
+                        let mut new = cur;
+                        add_offset_8(&mut new, *delta as i8);
+
+                        state.set_cell(new, target);
+                    }
+                }
             };
 
             instr_pointer += 1;
