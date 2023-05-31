@@ -22,7 +22,30 @@ impl Jit {
 
         for op in program {
             match op {
-                LirOp::Modify(delta) => {
+                op @ LirOp::Modify(delta) | op @ LirOp::OffsetModify(delta, ..) => {
+                    // hacky af
+                    let offset = if let LirOp::OffsetModify(_, offset) = op {
+                        *offset as i64
+                    } else {
+                        0
+                    };
+
+                    let abs_offset = offset.unsigned_abs();
+
+                    if offset > 0 {
+                        dynasm!(asm
+                            ; .arch aarch64
+                            ; mov x4, abs_offset
+                            ; add x0, x0, x4
+                        );
+                    } else if offset < 0 {
+                        dynasm!(asm
+                            ; .arch aarch64
+                            ; mov x4, abs_offset
+                            ; sub x0, x0, x4
+                        )
+                    }
+
                     let abs_delta = (*delta as i64).unsigned_abs();
                     if *delta > 0 {
                         dynasm!(asm
@@ -160,7 +183,6 @@ impl Jit {
                     )
                 }
                 LirOp::Meta(_) => { /* meta nodes ignored */ }
-                LirOp::CnstMovSet(_) => todo!(),
             }
         }
 

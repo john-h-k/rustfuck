@@ -13,7 +13,7 @@ use crate::{
     state::{add_offset_8, add_offset_size, BrainfuckState},
 };
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum LirOp<'a> {
     Modify(isize),
     Move(isize),
@@ -28,7 +28,8 @@ pub enum LirOp<'a> {
     BrFor,
     BrBack,
 
-    CnstMovSet(Vec<(/* offset */ isize, /* value to modify by */ isize)>),
+    // A special variant of modify caused by fusing mov-mod chains
+    OffsetModify(/* modify by */ isize, /* offset to */ isize),
 
     // Lets you insert comments into LIR
     Meta(&'a str),
@@ -50,7 +51,9 @@ impl IrLike for LirOp<'_> {
             LirOp::WriteZero => "Zero".into(),
             LirOp::Hop(mov_delta) => format!("Hop({mov_delta})"),
             LirOp::MoveCell(delta) => format!("MovCell({delta})"),
-            LirOp::CnstMovSet(set) => format!("CnstMovSet({set:?})"),
+            LirOp::OffsetModify(modify, offset) => {
+                format!("OffsetModify({modify}, offset: {offset})")
+            }
             LirOp::Meta(comment) => format!("<{comment}>"),
         }
     }
@@ -185,7 +188,7 @@ impl LirGen {
             for op in loop_content {
                 match op {
                     LirOp::Move(delta) => offset += delta,
-                    LirOp::Modify(delta) => set.push((offset, *delta)),
+                    LirOp::Modify(delta) => set.push(LirOp::OffsetModify(*delta, offset)),
                     _ => unreachable!(),
                 }
             }
@@ -193,15 +196,12 @@ impl LirGen {
             // Key point - we must insert a mov to ensure we remain in the same location at the end
             let fixup_mov = LirOp::Move(offset);
 
-            Some((
-                vec![
-                    LirOp::BrFor,
-                    LirOp::CnstMovSet(set),
-                    fixup_mov,
-                    LirOp::BrBack,
-                ],
-                loop_content.len() + 1,
-            ))
+            let mut new_ops = vec![LirOp::BrFor];
+            new_ops.extend(set);
+            new_ops.push(fixup_mov);
+            new_ops.push(LirOp::BrBack);
+
+            Some((new_ops, loop_content.len() + 1))
         } else {
             trace!("missed LIR loop-opt for {:?}", loop_content.to_compact());
             None
@@ -272,6 +272,16 @@ impl LirInterpreter {
                         add_offset_8(c, *delta as i8);
                     });
                 }
+                LirOp::OffsetModify(delta, offset) => {
+                    let mut target = state.pos;
+                    add_offset_size(&mut target, *offset);
+                    let cur = state.read_cell(target);
+
+                    let mut new = cur;
+                    add_offset_8(&mut new, *delta as i8);
+
+                    state.set_cell(new, target);
+                }
                 LirOp::Move(delta) => {
                     add_offset_size(&mut state.pos, *delta);
                 }
@@ -326,18 +336,6 @@ impl LirInterpreter {
                     }
                 }
                 LirOp::Meta(comment) => info!("META: {}", comment),
-                LirOp::CnstMovSet(set) => {
-                    for (offset, delta) in set {
-                        let mut target = state.pos;
-                        add_offset_size(&mut target, *offset);
-                        let cur = state.read_cell(target);
-
-                        let mut new = cur;
-                        add_offset_8(&mut new, *delta as i8);
-
-                        state.set_cell(new, target);
-                    }
-                }
             };
 
             instr_pointer += 1;
