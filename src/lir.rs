@@ -131,13 +131,13 @@ impl LirGen {
         let loop_content = &hir[1..loop_end];
 
         match loop_content {
-            [HirOp::Modify(_)] => Some((LirOp::WriteZero, 2)),
+            //[HirOp::Modify(_)] => Some((LirOp::WriteZero, 2)),
             //[HirOp::Move(delta)] => Some((LirOp::Hop(*delta), 2)),
-            [HirOp::Modify(-1), HirOp::Move(delta), HirOp::Modify(1), HirOp::Move(ndelta)]
-                if *delta == -ndelta =>
-            {
-                Some((LirOp::MoveCell(*delta), 5))
-            }
+            // [HirOp::Modify(-1), HirOp::Move(delta), HirOp::Modify(1), HirOp::Move(ndelta)]
+            //     if *delta == -ndelta =>
+            // {
+            //     Some((LirOp::MoveCell(*delta), 5))
+            // }
             _ => {
                 trace!("missed HIR loop-opt for {:?}", loop_content.to_compact());
                 None
