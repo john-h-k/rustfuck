@@ -40,6 +40,14 @@ impl BrainfuckState {
 
         f(&mut self.cells[self.pos]);
     }
+
+    pub fn modify_cur_cell_by(&mut self, arg: i32) {
+        if self.pos >= self.cells.len() {
+            self.cells.resize(self.pos + 1, 0);
+        }
+
+        self.cells[self.pos] = (self.cells[self.pos] as i32 + arg) as u8;
+    }
 }
 
 pub fn add_offset_size(dst: &mut usize, delta: isize) {

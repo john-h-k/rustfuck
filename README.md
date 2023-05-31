@@ -11,10 +11,10 @@ I wanted to write a brainfuck interpreter. They are inherently quite useless
 
 ## What does it have?
 
-`rustfuck` contains 3 interpreters as well as an optimising JIT-compiler (currently only available on AArch64).
+`rustfuck` contains 4 interpreters as well as an optimising JIT-compiler (currently only available on AArch64).
 
 The 4 backends:
-* Raw interpreter - executes brainfuck, as-is
+* BF interpreter - executes brainfuck, as-is
     * takes around 30s on `mandelbrot.b`
 * HIR interpreter - only fuses `+-`s and `<>`s, as well as creating a branch lookup table
     * takes around 5s on `mandelbrot.b`

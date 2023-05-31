@@ -12,10 +12,6 @@ use crate::{
     state::{add_offset_8, add_offset_size, BrainfuckState},
 };
 
-pub struct HirGen {
-    program: Vec<u8>,
-}
-
 /// Represents a "real" brainfuck operation before optimisation
 #[derive(Debug, PartialEq, Eq)]
 pub enum BfOp {
@@ -68,32 +64,13 @@ impl IrLike for HirOp {
     }
 }
 
-impl HirGen {
-    pub fn new(program: Vec<u8>) -> Self {
-        Self { program }
-    }
+pub struct HirGen;
 
-    pub fn gen(&mut self) -> Vec<HirOp> {
+impl HirGen {
+    pub fn gen(program: &[BfOp]) -> Vec<HirOp> {
         info!("Starting HIR gen");
 
-        let mut ir = Vec::new();
-
-        for command in self.program.iter() {
-            match command {
-                b'+' => ir.push(BfOp::Inc),
-                b'-' => ir.push(BfOp::Dec),
-                b'>' => ir.push(BfOp::MvRight),
-                b'<' => ir.push(BfOp::MvLeft),
-                b'.' => ir.push(BfOp::Out),
-                b',' => ir.push(BfOp::In),
-                b'[' => ir.push(BfOp::BrFor),
-                b']' => ir.push(BfOp::BrBack),
-
-                _ => continue,
-            }
-        }
-
-        Self::lower(&ir).tap(|ir| trace!("Lowered HIR: {}", ir.to_compact()))
+        Self::lower(program).tap(|ir| trace!("Lowered HIR: {}", ir.to_compact()))
     }
 
     fn lower(bf: &[BfOp]) -> Vec<HirOp> {

@@ -13,12 +13,14 @@ use crate::{
     hir::{HirGen, HirInterpreter},
     jit::Jit,
     lir::{LirGen, LirInterpreter},
+    parser::{BfInterpreter, BfParser},
 };
 
 mod hir;
 mod ir;
 mod jit;
 mod lir;
+mod parser;
 mod state;
 
 #[derive(Parser)]
@@ -33,6 +35,9 @@ struct Args {
     /// The file to execute
     /// If not provided, will enter REPL mode
     file: Option<PathBuf>,
+
+    #[arg(long)]
+    bf: bool,
 
     #[arg(long)]
     hir: bool,
@@ -56,47 +61,53 @@ fn main() -> Result<()> {
     let content = fs::read_to_string(args.file.expect("repl disabled"))?;
     let content = Vec::from(content.as_bytes());
 
-    let mut ir_gen = HirGen::new(content);
+    let (duration, parsed) = run(|| BfParser::parse(&content));
+    let parsed = parsed?;
 
-    let (duration, hir) = run(|| ir_gen.gen());
+    println!("Parse took {:?}", duration);
 
-    println!("HIR gen took {:?}", duration);
-
-    let (duration, result) = if args.hir {
-        run(|| HirInterpreter::execute(&hir))
+    let (duration, result) = if args.bf {
+        run(|| BfInterpreter::execute(&parsed))
     } else {
-        let (duration, lir) = run(|| LirGen::gen_ir(&hir));
+        let (duration, hir) = run(|| HirGen::gen(&parsed));
 
-        println!("LIR gen took {:?}", duration);
+        println!("HIR gen took {:?}", duration);
 
-        if args.lir {
-            run(|| LirInterpreter::execute(&lir))
-        } else if args.jit {
-            if cfg!(not(target_arch = "aarch64")) {
-                bail!("The `--jit` feature is currently only supported on ARM64");
-            }
-
-            let (duration, func) = run(|| Jit::jit(&lir));
-
-            let (buff, func) = func?;
-
-            println!("JIT took {:?}", duration);
-
-            let mut cells = [0u8; 30_000];
-            let mut buff = [0u8; 30_000];
-
-            let result = run(|| {
-                func(cells.as_mut_ptr(), buff.as_mut_ptr());
-                Ok(())
-            });
-
-            io::stdout().write_all(&buff[0..buff.iter().position(|&b| b == 0).unwrap()])?;
-
-            let _ = buff; // Backing memory is now safe to drop
-
-            result
+        if args.hir {
+            run(|| HirInterpreter::execute(&hir))
         } else {
-            panic!("pass a backend!");
+            let (duration, lir) = run(|| LirGen::gen_ir(&hir));
+
+            println!("LIR gen took {:?}", duration);
+
+            if args.lir {
+                run(|| LirInterpreter::execute(&lir))
+            } else if args.jit {
+                if cfg!(not(target_arch = "aarch64")) {
+                    bail!("The `--jit` feature is currently only supported on ARM64");
+                }
+
+                let (duration, func) = run(|| Jit::jit(&lir));
+                let (func_buff, func) = func?;
+
+                println!("JIT took {:?}", duration);
+
+                let mut cells = [0u8; 30_000];
+                let mut buff = [0u8; 30_000];
+
+                let result = run(|| {
+                    func(cells.as_mut_ptr(), buff.as_mut_ptr());
+                    Ok(())
+                });
+
+                io::stdout().write_all(&buff[0..buff.iter().position(|&b| b == 0).unwrap()])?;
+
+                let _ = func_buff; // Backing memory is now safe to drop
+
+                result
+            } else {
+                panic!("pass a backend!");
+            }
         }
     };
 
