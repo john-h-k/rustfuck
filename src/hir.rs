@@ -1,12 +1,10 @@
 use std::{
     collections::HashMap,
     io::{self, Read, Write},
-    ops::AddAssign,
-    str::CharIndices,
 };
 
 use anyhow::Result;
-use bumpalo::Bump;
+
 use log::{info, trace};
 use tap::prelude::*;
 

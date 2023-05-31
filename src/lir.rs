@@ -114,7 +114,7 @@ impl LirGen {
                 op =>
                 /* clone is cheap as we don't have any CnstMovSets yet */
                 {
-                    vec![op.clone()]
+                    vec![*op]
                 }
             };
 
@@ -243,11 +243,11 @@ impl LirInterpreter {
                 match *command {
                     command @ LirOp::BrFor => {
                         last_trace.clear();
-                        last_trace.push(command.clone());
+                        last_trace.push(*command);
                         last_trace_start = instr_pointer;
                     }
                     command @ LirOp::BrBack if last_trace_start != usize::MAX => {
-                        last_trace.push(command.clone());
+                        last_trace.push(*command);
                         let loc = (last_trace_start, instr_pointer);
                         traces
                             .entry(loc)
@@ -261,7 +261,7 @@ impl LirInterpreter {
                         last_trace_start = usize::MAX;
                         last_trace = Vec::new();
                     }
-                    command if last_trace_start != usize::MAX => last_trace.push(command.clone()),
+                    command if last_trace_start != usize::MAX => last_trace.push(*command),
                     _ => {}
                 }
             }

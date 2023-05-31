@@ -1,6 +1,5 @@
 use std::{
     env, fs,
-    io::{self, Write},
     path::PathBuf,
     time::{Duration, Instant},
 };

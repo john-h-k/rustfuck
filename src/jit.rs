@@ -32,38 +32,39 @@ impl Jit {
 
                     let abs_offset = offset.unsigned_abs();
 
-                    if offset > 0 {
-                        dynasm!(asm
+                    match offset {
+                        1.. => dynasm!(asm
                             ; .arch aarch64
                             ; mov x4, abs_offset
-                            ; add x0, x0, x4
-                        );
-                    } else if offset < 0 {
-                        dynasm!(asm
+                            ; add x5, x0, x4
+                        ),
+                        ..=-1 => dynasm!(asm
                             ; .arch aarch64
                             ; mov x4, abs_offset
-                            ; sub x0, x0, x4
-                        )
+                            ; sub x5, x0, x4
+                        ),
+                        _ => dynasm!(asm
+                            ; .arch aarch64
+                            ; mov x5, x0
+                        ),
                     }
 
                     let abs_delta = (*delta as i64).unsigned_abs();
                     if *delta > 0 {
                         dynasm!(asm
                             ; .arch aarch64
-                            ; ldrb w2, [x0]
+                            ; ldrb w2, [x5]
                             ; mov x3, abs_delta
                             ; add x2, x2, x3
-                            ; and x2, x2, #0xFF
-                            ; strb w2, [x0]
+                            ; strb w2, [x5]
                         )
                     } else {
                         dynasm!(asm
                             ; .arch aarch64
-                            ; ldrb w2, [x0]
+                            ; ldrb w2, [x5]
                             ; mov x3, abs_delta
                             ; sub x2, x2, x3
-                            ; and x2, x2, #0xFF
-                            ; strb w2, [x0]
+                            ; strb w2, [x5]
                         )
                     }
                 }
@@ -200,18 +201,10 @@ impl Jit {
 
         let mut cells = [0u8; 30_000];
         let mut buff = [0u8; 30_000];
-        eprintln!("Executing raw!");
 
-        func(
-            cells.as_mut_ptr().tap(|p| {
-                dbg!(p);
-            }),
-            buff.as_mut_ptr(),
-        );
+        func(cells.as_mut_ptr(), buff.as_mut_ptr());
 
         io::stdout().write_all(&buff[0..buff.iter().position(|&b| b == 0).unwrap()])?;
-
-        eprintln!("Somehow finished");
 
         Ok(())
     }
