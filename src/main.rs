@@ -1,5 +1,7 @@
 use std::{
     env, fs,
+    io::{self, Write},
+    mem,
     path::PathBuf,
     time::{Duration, Instant},
 };
@@ -56,24 +58,44 @@ fn main() -> Result<()> {
 
     let mut ir_gen = HirGen::new(content);
 
-    let hir = ir_gen.gen();
+    let (duration, hir) = run(|| ir_gen.gen());
+
+    println!("HIR gen took {:?}", duration);
 
     let (duration, result) = if args.hir {
         run(|| HirInterpreter::execute(&hir))
-    } else if args.lir {
-        let lir = LirGen::gen_ir(&hir);
-
-        run(|| LirInterpreter::execute(&lir))
-    } else if args.jit {
-        if cfg!(not(target_arch = "aarch64")) {
-            bail!("The `--jit` feature is currently only supported on ARM64");
-        }
-
-        let lir = LirGen::gen_ir(&hir);
-
-        run(|| Jit::jit(&lir))
     } else {
-        panic!("pass a backend!");
+        let (duration, lir) = run(|| LirGen::gen_ir(&hir));
+
+        println!("LIR gen took {:?}", duration);
+
+        if args.lir {
+            run(|| LirInterpreter::execute(&lir))
+        } else if args.jit {
+            if cfg!(not(target_arch = "aarch64")) {
+                bail!("The `--jit` feature is currently only supported on ARM64");
+            }
+
+            let (duration, func) = run(|| Jit::jit(&lir));
+
+            let func = func?;
+
+            println!("JIT took {:?}", duration);
+
+            let mut cells = [0u8; 30_000];
+            let mut buff = [0u8; 30_000];
+
+            let result = run(|| {
+                func(cells.as_mut_ptr(), buff.as_mut_ptr());
+                Ok(())
+            });
+
+            io::stdout().write_all(&buff[0..buff.iter().position(|&b| b == 0).unwrap()])?;
+
+            result
+        } else {
+            panic!("pass a backend!");
+        }
     };
 
     result?;
@@ -83,7 +105,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn run(f: impl FnOnce() -> Result<()>) -> (Duration, Result<()>) {
+fn run<R>(f: impl FnOnce() -> R) -> (Duration, R) {
     let start = Instant::now();
 
     let result = f();

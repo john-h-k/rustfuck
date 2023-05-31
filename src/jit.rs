@@ -1,9 +1,8 @@
 use std::collections::VecDeque;
-use std::io::Write;
-use std::{io, mem, u8};
+use std::{io, mem, ptr, slice, u8};
 
 use anyhow::Result;
-use dynasmrt::{dynasm, AssemblyOffset, DynasmApi, DynasmLabelApi};
+use dynasmrt::{dynasm, AssemblyOffset, DynasmApi, DynasmLabelApi, ExecutableBuffer};
 use log::trace;
 
 use crate::ir::IrLike;
@@ -12,7 +11,7 @@ use crate::lir::LirOp;
 pub struct Jit;
 
 impl Jit {
-    pub fn jit(program: &[LirOp]) -> Result<()> {
+    pub fn jit(program: &[LirOp]) -> Result<extern "C" fn(*mut u8, *mut u8)> {
         trace!("Jitting Lir: {}", program.to_compact());
 
         let mut branch_table = VecDeque::new();
@@ -195,16 +194,10 @@ impl Jit {
 
         let func = asm.finalize().expect("asm gen failed");
 
+        // Buffer `func` stays around forever, no need to return it
         let func: extern "C" fn(cells: *mut u8, buff: *mut u8) -> () =
             unsafe { mem::transmute(func.ptr(AssemblyOffset(0))) };
 
-        let mut cells = [0u8; 30_000];
-        let mut buff = [0u8; 30_000];
-
-        func(cells.as_mut_ptr(), buff.as_mut_ptr());
-
-        io::stdout().write_all(&buff[0..buff.iter().position(|&b| b == 0).unwrap()])?;
-
-        Ok(())
+        Ok(func)
     }
 }
