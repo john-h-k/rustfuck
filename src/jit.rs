@@ -1,11 +1,10 @@
 use std::collections::VecDeque;
 use std::io::Write;
-use std::{io, mem, ptr, slice, u8};
+use std::{io, mem, u8};
 
 use anyhow::Result;
 use dynasmrt::{dynasm, AssemblyOffset, DynasmApi, DynasmLabelApi};
 use log::trace;
-use tap::Tap;
 
 use crate::ir::IrLike;
 use crate::lir::LirOp;
