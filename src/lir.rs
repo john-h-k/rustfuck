@@ -198,7 +198,11 @@ impl LirGen {
 
             let mut new_ops = vec![LirOp::BrFor];
             new_ops.extend(set);
-            new_ops.push(fixup_mov);
+
+            if offset != 0 {
+                new_ops.push(fixup_mov);
+            }
+
             new_ops.push(LirOp::BrBack);
 
             Some((new_ops, loop_content.len() + 1))
