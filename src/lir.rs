@@ -19,7 +19,7 @@ pub enum LirOp<'a> {
     Move(isize),
 
     WriteZero,       // Zeroes the current cell
-    Hop(isize),      // Moves +/- in hops of n.0 until it finds a non-zero cell
+    Hop(isize),      // Moves +/- in hops of n until it finds a non-zero cell
     MoveCell(isize), // Adds the content of the current cell to another cell
 
     In,
@@ -71,7 +71,7 @@ impl LirGen {
 
         while let Some(op) = hir.get(pos) {
             // Any combo like [-], [+], [++++] is a set-to-zero
-            // (not really, but its either that or an infinite loop)
+            // (not really, but its either that or an infinite loop and we will simply ignore infinite loops)
 
             let lir_op = match op {
                 HirOp::Modify(delta) => LirOp::Modify(*delta),
