@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::{io, mem, ptr, slice, u8};
+use std::{mem, u8};
 
 use anyhow::Result;
 use dynasmrt::{dynasm, AssemblyOffset, DynasmApi, DynasmLabelApi, ExecutableBuffer};
