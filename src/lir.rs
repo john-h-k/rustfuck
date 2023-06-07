@@ -18,6 +18,10 @@ pub enum LirOp<'a> {
     Hop(isize),      // Moves +/- in hops of n until it finds a non-zero cell
     MoveCell(isize), // Adds the content of the current cell to another cell
 
+    // A simple loop which has an overall offset of 0
+    DecLoopBegin,
+    DecLoopEnd,
+
     In,
     Out,
 
@@ -42,6 +46,8 @@ impl IrLike for LirOp<'_> {
             }
             LirOp::In => "In".into(),
             LirOp::Out => "Out".into(),
+            LirOp::DecLoopBegin => "[DecLoopBegin->".into(),
+            LirOp::DecLoopEnd => "<-DecLoopEnd]".into(),
             LirOp::BrFor => "[Br->".into(),
             LirOp::BrBack => "<-Br]".into(),
             LirOp::WriteZero => "Zero".into(),
@@ -117,6 +123,8 @@ impl LirGen {
             lir2.extend(lir2_ops);
             pos += 1;
         }
+
+        // We can now collapse OffsetModify chains into dec loops
 
         lir2
     }
