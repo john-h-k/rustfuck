@@ -20,14 +20,7 @@ impl Jit {
 
         for op in program {
             match op {
-                op @ LirOp::Modify(delta) | op @ LirOp::OffsetModify(delta, ..) => {
-                    // hacky af
-                    let offset = if let LirOp::OffsetModify(_, offset) = op {
-                        *offset as i64
-                    } else {
-                        0
-                    };
-
+                LirOp::OffsetModify(delta, offset) => {
                     let abs_offset = offset.unsigned_abs();
 
                     match offset {

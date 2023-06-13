@@ -11,7 +11,6 @@ use crate::{hir::HirOp, ir::IrLike, state::BrainfuckState};
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum LirOp<'a> {
-    Modify(isize),
     Move(isize),
 
     WriteZero,       // Zeroes the current cell
@@ -19,9 +18,8 @@ pub enum LirOp<'a> {
     MoveCell(isize), // Adds the content of the current cell to another cell
 
     // A simple loop which has an overall offset of 0
-    DecLoopBegin,
-    DecLoopEnd,
-
+    // DecLoopBegin,
+    // DecLoopEnd,
     In,
     Out,
 
@@ -76,7 +74,7 @@ impl LirGen {
             // (not really, but its either that or an infinite loop and we will simply ignore infinite loops)
 
             let lir_op = match op {
-                HirOp::Modify(delta) => LirOp::Modify(*delta),
+                HirOp::Modify(delta) => LirOp::OffsetModify(*delta, 0),
                 HirOp::Move(delta) => LirOp::Move(*delta),
                 HirOp::In => LirOp::In,
                 HirOp::Out => LirOp::Out,
@@ -124,9 +122,35 @@ impl LirGen {
             pos += 1;
         }
 
-        // We can now collapse OffsetModify chains into dec loops
+        // Three LIR pass
 
-        lir2
+        let mut lir3 = Vec::new();
+        let mut pos = 0;
+
+        while let Some(op) = lir2.get(pos) {
+            // TODO: make less-allocy (vecs)
+            let lir3_ops = match op {
+                LirOp::BrFor => {
+                    if let Some((opts, skip)) = Self::try_opt_dec_loop(&lir[pos..]) {
+                        trace!("applied LIR loop-opt {:?}", &opts);
+                        pos += skip;
+                        opts
+                    } else {
+                        vec![LirOp::BrFor]
+                    }
+                }
+                op =>
+                /* clone is cheap as we don't have any CnstMovSets yet */
+                {
+                    vec![*op]
+                }
+            };
+
+            lir3.extend(lir3_ops);
+            pos += 1;
+        }
+
+        lir3
     }
 
     /// A simple loop is one with no nested loops
@@ -181,7 +205,7 @@ impl LirGen {
 
         if loop_content
             .iter()
-            .all(|op| matches!(op, LirOp::Modify(_) | LirOp::Move(_)))
+            .all(|op| matches!(op, LirOp::OffsetModify(_, 0) | LirOp::Move(_)))
         {
             // mod/mov chain
             // we can transform this into a special node
@@ -192,7 +216,7 @@ impl LirGen {
             for op in loop_content {
                 match op {
                     LirOp::Move(delta) => offset += delta,
-                    LirOp::Modify(delta) => set.push(LirOp::OffsetModify(*delta, offset)),
+                    LirOp::OffsetModify(delta, 0) => set.push(LirOp::OffsetModify(*delta, offset)),
                     _ => unreachable!(),
                 }
             }
@@ -214,6 +238,30 @@ impl LirGen {
             trace!("missed LIR loop-opt for {:?}", loop_content.to_compact());
             None
         }
+    }
+
+    fn try_opt_simple_lir_loop<'a>(lir: &[LirOp<'a>]) -> Option<(Vec<LirOp<'a>>, usize)> {
+        let loop_end = lir[1..]
+            .iter()
+            .position(|op| matches!(op, LirOp::BrFor | LirOp::BrBack))
+            .map(|v| /* account for skipping first br */ v + 1);
+
+        let loop_end = match loop_end {
+            None => return None,
+            Some(loop_end) if lir[loop_end] == LirOp::BrFor /* nested loop, not simple */ => return None,
+            Some(loop_end) => loop_end,
+        };
+
+        assert!(lir[0] == LirOp::BrFor && lir[loop_end] == LirOp::BrBack);
+        let loop_content = &lir[1..loop_end];
+
+        trace!("attempting LIR dec-loop loop-opt for {loop_content:?}");
+
+        // if loop_content.iter().all(|op| match op {
+        //     LirOp::OffsetModify(mov, offset) => {}
+        // }) {}
+
+        todo!()
     }
 }
 
