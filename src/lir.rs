@@ -272,10 +272,10 @@ impl LirInterpreter {
                     state.modify_cur_cell_with(|c| *c = c.wrapping_add_signed(*delta as i8));
                 }
                 LirOp::OffsetModify(delta, offset) => {
-                    let mut target = state.pos.wrapping_add_signed(*offset);
+                    let target = state.pos.wrapping_add_signed(*offset);
                     let cur = state.read_cell(target);
 
-                    let mut new = cur.wrapping_add_signed(*delta as i8);
+                    let new = cur.wrapping_add_signed(*delta as i8);
 
                     state.set_cell(new, target);
                 }
@@ -317,7 +317,7 @@ impl LirInterpreter {
                 }
                 LirOp::MoveCell(delta) => {
                     if state.read_cur_cell() != 0 {
-                        let mut target = state.pos.wrapping_add_signed(*delta);
+                        let target = state.pos.wrapping_add_signed(*delta);
 
                         state.set_cell(
                             state.read_cell(target).wrapping_add(state.read_cur_cell()),
@@ -326,7 +326,7 @@ impl LirInterpreter {
                         state.set_cur_cell(0);
                     }
                 }
-                LirOp::Meta(comment) => {}
+                LirOp::Meta(_comment) => {}
             };
 
             instr_pointer += 1;

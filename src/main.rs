@@ -2,7 +2,6 @@
 
 use std::{
     env, fs,
-    hint::black_box,
     io::{self, Write},
     path::PathBuf,
     time::{Duration, Instant},
