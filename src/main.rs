@@ -30,6 +30,11 @@ mod state;
     help_template = "{name}: {about-section}Version: {version}\nWritten by {author-with-newline}\n{usage-heading} {usage}\n{all-args} {tab}"
 )]
 #[command(about, long_about = None)]
+#[command(group(
+    clap::ArgGroup::new("backend")
+        .required(true)
+        .args(&["bf", "hir", "lir", "jit"]),
+))]
 struct Args {
     /// The file to execute
     /// If not provided, will enter REPL mode
@@ -46,6 +51,10 @@ struct Args {
 
     #[arg(long)]
     jit: bool,
+
+    /// Provide profiling information
+    #[arg(short, long)]
+    profile: bool,
 }
 
 fn main() -> Result<()> {
@@ -63,21 +72,27 @@ fn main() -> Result<()> {
     let (duration, parsed) = run(|| BfParser::parse(&content));
     let parsed = parsed?;
 
-    println!("Parse took {:?}", duration);
+    if args.profile {
+        println!("Parse took {:?}", duration);
+    }
 
     let (duration, result) = if args.bf {
         run(|| BfInterpreter::execute(&parsed))
     } else {
         let (duration, hir) = run(|| HirGen::gen(&parsed));
 
-        println!("HIR gen took {:?}", duration);
+        if args.profile {
+            println!("HIR gen took {:?}", duration);
+        }
 
         if args.hir {
             run(|| HirInterpreter::execute(&hir))
         } else {
             let (duration, lir) = run(|| LirGen::gen_ir(&hir));
 
-            println!("LIR gen took {:?}", duration);
+            if args.profile {
+                println!("LIR gen took {:?}", duration);
+            }
 
             if args.lir {
                 run(|| LirInterpreter::execute(&lir))
@@ -89,7 +104,9 @@ fn main() -> Result<()> {
                 let (duration, func) = run(|| Jit::jit(&lir));
                 let (func_buff, func) = func?;
 
-                println!("JIT took {:?}", duration);
+                if args.profile {
+                    println!("JIT took {:?}", duration);
+                }
 
                 let mut cells = [0u8; 30_000];
                 let mut buff = [0u8; 30_000];
@@ -105,14 +122,17 @@ fn main() -> Result<()> {
 
                 result
             } else {
-                panic!("pass a backend!");
+                // Should be handled by clap
+                unreachable!("pass a backend!");
             }
         }
     };
 
     result?;
 
-    println!("Execution took: {:?}", duration);
+    if args.profile {
+        println!("Execution took: {:?}", duration);
+    }
 
     Ok(())
 }
