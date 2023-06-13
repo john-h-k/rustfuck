@@ -7,11 +7,7 @@ use anyhow::Result;
 use log::{info, trace};
 use tap::prelude::*;
 
-use crate::{
-    hir::HirOp,
-    ir::IrLike,
-    state::{add_offset_8, add_offset_size, BrainfuckState},
-};
+use crate::{hir::HirOp, ir::IrLike, state::BrainfuckState};
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum LirOp<'a> {
@@ -242,7 +238,8 @@ impl LirInterpreter {
         let mut last_trace = Vec::new();
         let mut last_trace_start = usize::MAX;
 
-        while let Some(ref command) = program.get(instr_pointer) {
+        while instr_pointer < program.len() {
+            let command = unsafe { &program.get_unchecked(instr_pointer) };
             if cfg!(feature = "trace") {
                 match *command {
                     command @ LirOp::BrFor => {
@@ -272,23 +269,17 @@ impl LirInterpreter {
 
             match command {
                 LirOp::Modify(delta) => {
-                    state.modify_cur_cell_with(|c| {
-                        add_offset_8(c, *delta as i8);
-                    });
+                    state.modify_cur_cell_with(|c| *c = c.wrapping_add_signed(*delta as i8));
                 }
                 LirOp::OffsetModify(delta, offset) => {
-                    let mut target = state.pos;
-                    add_offset_size(&mut target, *offset);
+                    let mut target = state.pos.wrapping_add_signed(*offset);
                     let cur = state.read_cell(target);
 
-                    let mut new = cur;
-                    add_offset_8(&mut new, *delta as i8);
+                    let mut new = cur.wrapping_add_signed(*delta as i8);
 
                     state.set_cell(new, target);
                 }
-                LirOp::Move(delta) => {
-                    add_offset_size(&mut state.pos, *delta);
-                }
+                LirOp::Move(delta) => state.pos = state.pos.wrapping_add_signed(*delta),
                 LirOp::Out => {
                     stdout
                         .write_all(&[state.read_cur_cell()])
@@ -321,25 +312,21 @@ impl LirInterpreter {
                 LirOp::WriteZero => state.set_cur_cell(0),
                 LirOp::Hop(mov_delta) => {
                     while state.read_cur_cell() > 0 {
-                        add_offset_size(&mut state.pos, *mov_delta);
+                        state.pos = state.pos.wrapping_add_signed(*mov_delta);
                     }
                 }
                 LirOp::MoveCell(delta) => {
                     if state.read_cur_cell() != 0 {
-                        let mut target = state.pos;
-                        add_offset_size(&mut target, *delta);
+                        let mut target = state.pos.wrapping_add_signed(*delta);
 
                         state.set_cell(
-                            state
-                                .read_cell(target)
-                                .overflowing_add(state.read_cur_cell())
-                                .0,
+                            state.read_cell(target).wrapping_add(state.read_cur_cell()),
                             target,
                         );
                         state.set_cur_cell(0);
                     }
                 }
-                LirOp::Meta(comment) => info!("META: {}", comment),
+                LirOp::Meta(comment) => {}
             };
 
             instr_pointer += 1;

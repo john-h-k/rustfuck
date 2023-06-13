@@ -7,10 +7,7 @@ use anyhow::Result;
 use log::{info, trace};
 use tap::prelude::*;
 
-use crate::{
-    ir::IrLike,
-    state::{add_offset_8, add_offset_size, BrainfuckState},
-};
+use crate::{ir::IrLike, state::BrainfuckState};
 
 /// Represents a "real" brainfuck operation before optimisation
 #[derive(Debug, PartialEq, Eq)]
@@ -195,12 +192,10 @@ impl HirInterpreter {
             match command {
                 HirOp::Modify(delta) => {
                     state.modify_cur_cell_with(|c| {
-                        add_offset_8(c, *delta as i8);
+                        *c = c.wrapping_add_signed(*delta as i8);
                     });
                 }
-                HirOp::Move(delta) => {
-                    add_offset_size(&mut state.pos, *delta);
-                }
+                HirOp::Move(delta) => state.pos = state.pos.wrapping_add_signed(*delta),
                 HirOp::Out => {
                     stdout
                         .write_all(&[state.read_cur_cell()])
