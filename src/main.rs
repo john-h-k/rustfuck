@@ -1,5 +1,8 @@
+#![feature(let_chains)]
+
 use std::{
     env, fs,
+    hint::black_box,
     io::{self, Write},
     path::PathBuf,
     time::{Duration, Instant},
@@ -55,6 +58,10 @@ struct Args {
     /// Provide profiling information
     #[arg(short, long)]
     profile: bool,
+
+    /// How many times to run the resultant program (for profiling)
+    #[arg(short, long, default_value_t = 1)]
+    repeat: u32,
 }
 
 fn main() -> Result<()> {
@@ -69,39 +76,39 @@ fn main() -> Result<()> {
     let content = fs::read_to_string(args.file.expect("repl disabled"))?;
     let content = Vec::from(content.as_bytes());
 
-    let (duration, parsed) = run(|| BfParser::parse(&content));
+    let (duration, parsed) = run_once(|| BfParser::parse(&content));
     let parsed = parsed?;
 
     if args.profile {
         println!("Parse took {:?}", duration);
     }
 
-    let (duration, result) = if args.bf {
-        run(|| BfInterpreter::execute(&parsed))
+    let duration = if args.bf {
+        run_n(args.repeat, || BfInterpreter::execute(&parsed))
     } else {
-        let (duration, hir) = run(|| HirGen::gen(&parsed));
+        let (duration, hir) = run_once(|| HirGen::gen(&parsed));
 
         if args.profile {
             println!("HIR gen took {:?}", duration);
         }
 
         if args.hir {
-            run(|| HirInterpreter::execute(&hir))
+            run_n(args.repeat, || HirInterpreter::execute(&hir))
         } else {
-            let (duration, lir) = run(|| LirGen::gen_ir(&hir));
+            let (duration, lir) = run_once(|| LirGen::gen_ir(&hir));
 
             if args.profile {
                 println!("LIR gen took {:?}", duration);
             }
 
             if args.lir {
-                run(|| LirInterpreter::execute(&lir))
+                run_n(args.repeat, || LirInterpreter::execute(&lir))
             } else if args.jit {
                 if cfg!(not(target_arch = "aarch64")) {
                     bail!("The `--jit` feature is currently only supported on ARM64");
                 }
 
-                let (duration, func) = run(|| Jit::jit(&lir));
+                let (duration, func) = run_once(|| Jit::jit(&lir));
                 let (func_buff, func) = func?;
 
                 if args.profile {
@@ -111,7 +118,7 @@ fn main() -> Result<()> {
                 let mut cells = [0u8; 30_000];
                 let mut buff = [0u8; 30_000];
 
-                let result = run(|| {
+                let result = run_n(args.repeat, || {
                     func(cells.as_mut_ptr(), buff.as_mut_ptr());
                     Ok(())
                 });
@@ -128,16 +135,26 @@ fn main() -> Result<()> {
         }
     };
 
-    result?;
-
-    if args.profile {
+    if let Ok(duration) = duration && args.profile {
         println!("Execution took: {:?}", duration);
     }
 
     Ok(())
 }
 
-fn run<R>(f: impl FnOnce() -> R) -> (Duration, R) {
+fn run_n<T>(count: u32, mut f: impl FnMut() -> Result<T>) -> Result<Duration> {
+    let start = Instant::now();
+
+    for _ in 0..count {
+        f()?;
+    }
+
+    let end = Instant::now();
+
+    Ok(end - start)
+}
+
+fn run_once<R>(f: impl FnOnce() -> R) -> (Duration, R) {
     let start = Instant::now();
 
     let result = f();
