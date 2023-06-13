@@ -26,9 +26,7 @@ impl BrainfuckState {
             self.cells.resize(i + 1, 0);
         }
 
-        unsafe {
-            *self.cells.get_unchecked_mut(i) = val;
-        }
+        self.cells[i] = val;
     }
 
     pub fn set_cur_cell(&mut self, val: u8) {
@@ -50,4 +48,20 @@ impl BrainfuckState {
 
         self.cells[self.pos] = (self.cells[self.pos] as i32 + arg) as u8;
     }
+}
+
+pub fn add_offset_size(dst: &mut usize, delta: isize) {
+    if delta > 0 {
+        *dst += delta as usize
+    } else {
+        *dst -= delta.unsigned_abs()
+    };
+}
+
+pub fn add_offset_8(dst: &mut u8, delta: i8) {
+    if delta > 0 {
+        *dst = dst.overflowing_add(delta as u8).0
+    } else {
+        *dst = dst.overflowing_sub(delta.unsigned_abs()).0
+    };
 }
