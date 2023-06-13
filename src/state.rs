@@ -38,7 +38,8 @@ impl BrainfuckState {
             self.cells.resize(self.pos + 1, 0);
         }
 
-        f(&mut self.cells[self.pos]);
+        // SAFETY: We have just resized to at least `self.pos`, so this is ok
+        unsafe { f(self.cells.get_unchecked_mut(self.pos)) };
     }
 
     pub fn modify_cur_cell_by(&mut self, arg: i32) {
