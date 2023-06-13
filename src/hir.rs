@@ -37,6 +37,14 @@ pub enum HirOp {
 }
 
 impl IrLike for HirOp {
+    fn is_begin_branch(&self) -> bool {
+        matches!(self, HirOp::BrFor)
+    }
+
+    fn is_end_branch(&self) -> bool {
+        matches!(self, HirOp::BrBack)
+    }
+
     fn to_compact(&self) -> String {
         match self {
             HirOp::Modify(delta) => {

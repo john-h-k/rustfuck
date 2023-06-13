@@ -32,6 +32,14 @@ pub enum LirOp<'a> {
 }
 
 impl IrLike for LirOp<'_> {
+    fn is_begin_branch(&self) -> bool {
+        matches!(self, LirOp::BrFor)
+    }
+
+    fn is_end_branch(&self) -> bool {
+        matches!(self, LirOp::BrBack)
+    }
+
     fn to_compact(&self) -> String {
         match self {
             LirOp::Modify(delta) => {
@@ -219,6 +227,8 @@ impl LirInterpreter {
             eprintln!("[Tracing enabled]");
         }
 
+        trace!("LIR Program: \n{}", program.to_compact());
+
         let branch_table = Self::gen_branch_table(program)?;
 
         let mut instr_pointer = 0;
@@ -326,24 +336,20 @@ impl LirInterpreter {
                         state.set_cur_cell(0);
                     }
                 }
-                LirOp::Meta(_comment) => {}
+                LirOp::Meta(comment) => info!("META: {}", comment),
             };
 
             instr_pointer += 1;
         }
 
         if cfg!(feature = "trace") {
-            for (_, trace) in traces
+            for (_, trace) in &traces
                 .iter()
+                .filter(|(_, t)| !t.ops.contains(&LirOp::Meta("BR SKIP"))) // Skips non-simple loops
                 .collect::<Vec<_>>()
                 .tap_mut(|v| v.sort_by_key(|(_, t)| t.hit_count))
-                .tap_mut(|v| v.reverse())
+                .tap_mut(|v| v.reverse())[..10]
             {
-                if trace.ops.contains(&LirOp::Meta("BR SKIP")) {
-                    // Not a simple loop, skip
-                    continue;
-                }
-
                 eprintln!(
                     "Trace: hit_count={}, loc=({},{}), ops={}",
                     trace.hit_count,
