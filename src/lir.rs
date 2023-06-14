@@ -13,6 +13,9 @@ use crate::{hir::HirOp, ir::IrLike, state::BrainfuckState};
 pub enum LirOp<'a> {
     Move(isize),
 
+    // Modify a cell at a fixed (positive or negative) offset
+    OffsetModify(/* modify by */ isize, /* offset to */ isize),
+
     WriteZero,       // Zeroes the current cell
     Hop(isize),      // Moves +/- in hops of n until it finds a non-zero cell
     MoveCell(isize), // Adds the content of the current cell to another cell
@@ -26,9 +29,6 @@ pub enum LirOp<'a> {
     BrFor,
     BrBack,
 
-    // A special variant of modify caused by fusing mov-mod chains
-    OffsetModify(/* modify by */ isize, /* offset to */ isize),
-
     // Lets you insert comments into LIR
     Meta(&'a str),
 }
@@ -36,24 +36,21 @@ pub enum LirOp<'a> {
 impl IrLike for LirOp<'_> {
     fn to_compact(&self) -> String {
         match self {
-            LirOp::Modify(delta) => {
-                format!("Mod({delta})")
+            LirOp::OffsetModify(modify, offset) => {
+                format!("OffsetModify({modify}, offset: {offset})")
             }
             LirOp::Move(delta) => {
                 format!("Mov({delta})")
             }
             LirOp::In => "In".into(),
             LirOp::Out => "Out".into(),
-            LirOp::DecLoopBegin => "[DecLoopBegin->".into(),
-            LirOp::DecLoopEnd => "<-DecLoopEnd]".into(),
+            // LirOp::DecLoopBegin => "[DecLoopBegin->".into(),
+            // LirOp::DecLoopEnd => "<-DecLoopEnd]".into(),
             LirOp::BrFor => "[Br->".into(),
             LirOp::BrBack => "<-Br]".into(),
             LirOp::WriteZero => "Zero".into(),
             LirOp::Hop(mov_delta) => format!("Hop({mov_delta})"),
             LirOp::MoveCell(delta) => format!("MovCell({delta})"),
-            LirOp::OffsetModify(modify, offset) => {
-                format!("OffsetModify({modify}, offset: {offset})")
-            }
             LirOp::Meta(comment) => format!("<{comment}>"),
         }
     }
@@ -131,8 +128,8 @@ impl LirGen {
             // TODO: make less-allocy (vecs)
             let lir3_ops = match op {
                 LirOp::BrFor => {
-                    if let Some((opts, skip)) = Self::try_opt_dec_loop(&lir[pos..]) {
-                        trace!("applied LIR loop-opt {:?}", &opts);
+                    if let Some((opts, skip)) = Self::try_opt_dec_loop(&lir2[pos..]) {
+                        trace!("applied dec loop-opt {:?}", &opts);
                         pos += skip;
                         opts
                     } else {
@@ -166,7 +163,9 @@ impl LirGen {
             Some(loop_end) => loop_end,
         };
 
-        assert!(hir[0] == HirOp::BrFor && hir[loop_end] == HirOp::BrBack);
+        assert_eq!(hir[0], HirOp::BrFor);
+        assert_eq!(hir[loop_end], HirOp::BrBack);
+
         let loop_content = &hir[1..loop_end];
 
         trace!("attempting HIR loop-opt for {loop_content:?}");
@@ -198,7 +197,9 @@ impl LirGen {
             Some(loop_end) => loop_end,
         };
 
-        assert!(lir[0] == LirOp::BrFor && lir[loop_end] == LirOp::BrBack);
+        assert_eq!(lir[0], LirOp::BrFor);
+        assert_eq!(lir[loop_end], LirOp::BrBack);
+
         let loop_content = &lir[1..loop_end];
 
         trace!("attempting LIR loop-opt for {loop_content:?}");
@@ -240,7 +241,7 @@ impl LirGen {
         }
     }
 
-    fn try_opt_simple_lir_loop<'a>(lir: &[LirOp<'a>]) -> Option<(Vec<LirOp<'a>>, usize)> {
+    fn try_opt_dec_loop<'a>(lir: &[LirOp<'a>]) -> Option<(Vec<LirOp<'a>>, usize)> {
         let loop_end = lir[1..]
             .iter()
             .position(|op| matches!(op, LirOp::BrFor | LirOp::BrBack))
@@ -252,16 +253,26 @@ impl LirGen {
             Some(loop_end) => loop_end,
         };
 
-        assert!(lir[0] == LirOp::BrFor && lir[loop_end] == LirOp::BrBack);
+        assert_eq!(lir[0], LirOp::BrFor);
+        assert_eq!(lir[loop_end], LirOp::BrBack);
+
         let loop_content = &lir[1..loop_end];
 
         trace!("attempting LIR dec-loop loop-opt for {loop_content:?}");
 
-        // if loop_content.iter().all(|op| match op {
-        //     LirOp::OffsetModify(mov, offset) => {}
-        // }) {}
-
-        todo!()
+        // Loops
+        if loop_content
+            .iter()
+            .all(|op| matches!(op, LirOp::OffsetModify(_, 1.. | ..=-1) | LirOp::In | LirOp::Out))
+            && let Some(dec_op) = loop_content
+                .iter()
+                .find(|op| matches!(op, LirOp::OffsetModify(-1, 0)))
+        {
+            // We can make this a dec loop
+            Some((vec![1, 2, 34], loop_content.len() + 1))
+        } else {
+            None
+        }
     }
 }
 
@@ -324,9 +335,6 @@ impl LirInterpreter {
             }
 
             match command {
-                LirOp::Modify(delta) => {
-                    state.modify_cur_cell_with(|c| *c = c.wrapping_add_signed(*delta as i8));
-                }
                 LirOp::OffsetModify(delta, offset) => {
                     let target = state.pos.wrapping_add_signed(*offset);
                     let cur = state.read_cell(target);

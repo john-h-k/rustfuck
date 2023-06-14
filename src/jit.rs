@@ -21,6 +21,7 @@ impl Jit {
         for op in program {
             match op {
                 LirOp::OffsetModify(delta, offset) => {
+                    let offset = *offset as i64;
                     let abs_offset = offset.unsigned_abs();
 
                     match offset {
