@@ -21,8 +21,6 @@ pub enum LirOp<'a> {
     MoveCell(isize), // Adds the content of the current cell to another cell
 
     // A simple loop which has an overall offset of 0
-    // DecLoopBegin,
-    // DecLoopEnd,
     In,
     Out,
 
@@ -44,8 +42,6 @@ impl IrLike for LirOp<'_> {
             }
             LirOp::In => "In".into(),
             LirOp::Out => "Out".into(),
-            // LirOp::DecLoopBegin => "[DecLoopBegin->".into(),
-            // LirOp::DecLoopEnd => "<-DecLoopEnd]".into(),
             LirOp::BrFor => "[Br->".into(),
             LirOp::BrBack => "<-Br]".into(),
             LirOp::WriteZero => "Zero".into(),
@@ -119,35 +115,7 @@ impl LirGen {
             pos += 1;
         }
 
-        // Three LIR pass
-
-        let mut lir3 = Vec::new();
-        let mut pos = 0;
-
-        while let Some(op) = lir2.get(pos) {
-            // TODO: make less-allocy (vecs)
-            let lir3_ops = match op {
-                LirOp::BrFor => {
-                    if let Some((opts, skip)) = Self::try_opt_dec_loop(&lir2[pos..]) {
-                        trace!("applied dec loop-opt {:?}", &opts);
-                        pos += skip;
-                        opts
-                    } else {
-                        vec![LirOp::BrFor]
-                    }
-                }
-                op =>
-                /* clone is cheap as we don't have any CnstMovSets yet */
-                {
-                    vec![*op]
-                }
-            };
-
-            lir3.extend(lir3_ops);
-            pos += 1;
-        }
-
-        lir3
+        lir2
     }
 
     /// A simple loop is one with no nested loops
@@ -237,40 +205,6 @@ impl LirGen {
             Some((new_ops, loop_content.len() + 1))
         } else {
             trace!("missed LIR loop-opt for {:?}", loop_content.to_compact());
-            None
-        }
-    }
-
-    fn try_opt_dec_loop<'a>(lir: &[LirOp<'a>]) -> Option<(Vec<LirOp<'a>>, usize)> {
-        let loop_end = lir[1..]
-            .iter()
-            .position(|op| matches!(op, LirOp::BrFor | LirOp::BrBack))
-            .map(|v| /* account for skipping first br */ v + 1);
-
-        let loop_end = match loop_end {
-            None => return None,
-            Some(loop_end) if lir[loop_end] == LirOp::BrFor /* nested loop, not simple */ => return None,
-            Some(loop_end) => loop_end,
-        };
-
-        assert_eq!(lir[0], LirOp::BrFor);
-        assert_eq!(lir[loop_end], LirOp::BrBack);
-
-        let loop_content = &lir[1..loop_end];
-
-        trace!("attempting LIR dec-loop loop-opt for {loop_content:?}");
-
-        // Loops
-        if loop_content
-            .iter()
-            .all(|op| matches!(op, LirOp::OffsetModify(_, 1.. | ..=-1) | LirOp::In | LirOp::Out))
-            && let Some(dec_op) = loop_content
-                .iter()
-                .find(|op| matches!(op, LirOp::OffsetModify(-1, 0)))
-        {
-            // We can make this a dec loop
-            Some((vec![1, 2, 34], loop_content.len() + 1))
-        } else {
             None
         }
     }
