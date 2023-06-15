@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 authors = ["John Harry Kelly <johnharrykelly@gmail.com>"]
+description = "A blazing fast JIT compiler + interpreter for Brainfuck"
+license = "MIT"
+repository = "https://github.com/john-h-k/rustfuck"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
